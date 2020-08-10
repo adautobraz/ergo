@@ -2538,25 +2538,24 @@ all_closest_songs.loc[all_closest_songs['own_artist']].groupby(['artist']).agg({
 all_closest_songs.loc[(all_closest_songs['artist'] == 'Beyoncé') 
                       & (all_closest_songs['song'] == 'Hold Up')                    
                       & (all_closest_songs['own_artist'])]
+# -
 
-# + [markdown] heading_collapsed=true
 # ### Taylor Swift
 
-# + hidden=true
+# +
 df = songs_scaled.loc[
     (songs_scaled['artist'] == 'Taylor Swift')
-    & (songs_scaled['valence'] < 0)
-    & (songs_scaled['sentiment_score'] < 0)
+#     & (songs_scaled['valence'] < 0)
+#     & (songs_scaled['sentiment_score'] < 0)
 ]
 
 df.loc[:, 'rank_sentiment'] = df.groupby(['artist'])['sentiment_score'].rank(method='first', ascending=True)
 df.loc[:, 'rank_valence'] = df.groupby(['artist'])['valence'].rank(method='first', ascending=True)
+# -
 
-# + hidden=true
 px.scatter(df, x='valence', y='sentiment_score', hover_name='song', hover_data=['album', 'rank_sentiment', 'rank_valence'], 
            color='album', size_max=10)
 
-# + hidden=true
 px.scatter(df, x='artist', y='sentiment_score', hover_name='song', hover_data=['album'], 
            color='album', size_max=10)
 
