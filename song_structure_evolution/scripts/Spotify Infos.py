@@ -53,9 +53,3 @@ def get_tracks_infos_df(tracks_artists_array):
     
     
 r = search_for_track('cardigan', 'Taylor Swift')
-
-# -
-
-
-
-
