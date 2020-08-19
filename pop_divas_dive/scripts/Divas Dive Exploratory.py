@@ -122,6 +122,7 @@ lyrics_df.loc[:, 'sentiment'] =  lyrics_df['sentiment_label'].apply(lambda x: 1 
 
 lyrics_df.loc[:, 'sentiment_score'] = (lyrics_df['sentiment_probability'].astype(float) - 0.5)
 lyrics_df.loc[:, 'sentiment_score'] = lyrics_df['sentiment_score']*lyrics_df['sentiment']
+
 lyrics_df.head()
 
 ## Final dataset
@@ -651,7 +652,7 @@ plot(fig)
 
 # ### Representativeness
 
-# + code_folding=[0]
+# + code_folding=[]
 # Data Prep 
 from scipy.spatial import distance
 
@@ -679,6 +680,9 @@ dist_song_artist.loc[:, 'song_popularity'] = pop_divas_df['song_popularity'].val
 dist_song_artist = dist_song_artist.loc[dist_song_artist['usual_track']]
 
 dist_song_artist.head(3)
+# -
+
+artist_songs
 
 # + code_folding=[0]
 # Song distance from artist average
@@ -1073,7 +1077,7 @@ plot(fig)
 
 # ### Mean Shift - Past discography
 
-# + code_folding=[0]
+# + code_folding=[]
 # Code
 
 artist_average = []
@@ -1286,10 +1290,9 @@ plot(fig)
 
 write(fig, 'inovation_per_artist_en')
 
-# + [markdown] heading_collapsed=true
 # ### Mean Shift - Last Album
 
-# + code_folding=[0] hidden=true
+# + code_folding=[]
 ## Code 
 ## Genearate artist array of last album
 artist_average = []
@@ -1363,7 +1366,7 @@ album_diff_past.loc[album_diff_past['value'] == album_diff_past['max_value'] ,'t
 album_diff_past.loc[:,'text'] = album_diff_past['text'].str.extract(r'([^\(\)]*)').iloc[:, 0]
 album_diff_past.head()
 
-# + code_folding=[0] hidden=true
+# + code_folding=[0]
 # Views
 
 # Dist from last album, points
@@ -1407,7 +1410,7 @@ fig.update_layout(
 
 plot(fig)
 
-# + code_folding=[0] hidden=true
+# + code_folding=[0]
 # Average inovation 
 df = album_diff_past.loc[album_diff_past['album_order'] > 1]
 fig = px.histogram(df, x='artist', y='value', color='artist', 
@@ -1584,7 +1587,7 @@ plot(fig)
 # + [markdown] code_folding=[]
 # ### Focus view per feature
 
-# + code_folding=[0]
+# + code_folding=[]
 def plot_feature_focus(artists, feature, position):
     
     x='album_order_norm'
