@@ -19,28 +19,32 @@ from unidecode import  unidecode
 from urllib.parse import unquote
 import requests
 import urllib.request
+import numpy as np
 
-# + [markdown] heading_collapsed=true
 # ## Extract from Wikipedia
 
-# + hidden=true
 url = 'https://pt.wikipedia.org/wiki/Lista_de_partidos_pol%C3%ADticos_do_Brasil'
 s = requests.Session()
 response = s.get(url, timeout=10)
 soup = BeautifulSoup(response.text, 'html.parser')
 
-# + hidden=true
+# +
 partidos = soup.find_all('table', {'class':'wikitable sortable'})[0]
 
 posicoes_table = soup.find_all('table', {'class':'wikitable sortable'})[1]
+# -
 
-# + hidden=true
-header = [th.text.rstrip() for th in partidos.find_all('th') if th.text.rstrip()]
+# ### Posicoes infos
+
+# +
+posicoes_table
+
+header = [th.text.rstrip() for th in posicoes_table.find_all('th') if th.text.rstrip()]
 
 col_size = len(header)
-table_values = partidos.find_all('td')
+table_values = posicoes_table.find_all('td')
 values_dict = {}
-for i in range(0, len(values)):
+for i in range(0, len(table_values)):
     index = str(np.floor(i/col_size))
     value = table_values[i].text.replace('\n', '')
     if i % col_size == 0:
@@ -53,7 +57,59 @@ table = list(values_dict.values())
 
 header.insert(0, 'link')
 
-# + hidden=true
+# +
+posicoes_df = pd.DataFrame(table, columns=header)
+
+posicoes_df.columns = ['link', 'name', 'fernandes', 'coppedge', 'globo', 'bbc', 'couto', 'folha', 'congresso']
+
+posicoes_df = pd.melt(posicoes_df, id_vars=['name'], value_vars=posicoes_df.iloc[:, 2:].columns.tolist())
+
+
+posicoes_df.loc[:, 'centro'] = posicoes_df['value'].str.contains('centro').astype(int)
+posicoes_df.loc[:, 'direita'] = posicoes_df['value'].str.contains('direita').astype(int)
+posicoes_df.loc[:, 'esquerda'] = posicoes_df['value'].str.contains('esquerda').astype(int)
+
+posicoes_df = pd.melt(posicoes_df, id_vars=['name'], value_vars=['centro', 'direita', 'esquerda'], 
+                      var_name='position', value_name='mentions')
+
+posicoes_df = posicoes_df\
+                .groupby(['name', 'position'], as_index=False)\
+                .agg({'mentions':'sum'})\
+                .sort_values(by='position', ascending=False)
+
+
+posicoes_df.loc[:, 'rank'] = posicoes_df.groupby(['name'])['mentions'].rank(method='first', ascending=False)
+
+posicoes_df.loc[:, 'code'] = posicoes_df['name'].str.upper()
+posicoes_df.loc[posicoes_df['name'].isin(['PCdoB']), 'code'] = posicoes_df['name']
+
+top_position = posicoes_df.loc[posicoes_df['rank'] == 1, ['code', 'position']]
+
+top_position.head()
+# -
+
+# ### Partidos info
+
+# +
+header = [th.text.rstrip() for th in partidos.find_all('th') if th.text.rstrip()]
+
+col_size = len(header)
+table_values = partidos.find_all('td')
+values_dict = {}
+for i in range(0, len(table_values)):
+    index = str(np.floor(i/col_size))
+    value = table_values[i].text.replace('\n', '')
+    if i % col_size == 0:
+        link = table_values[i].find('a', href=True)['href']
+        values_dict[index] = [link, value]
+    else:
+        values_dict[index].append(value)
+
+table = list(values_dict.values())
+
+header.insert(0, 'link')
+
+# +
 partidos_raw_df = pd.DataFrame(table, columns=header)
 
 partidos_raw_df.columns = ['link', 'name', 'initials', 'electoral_num', 'affiliates', 'creation_date', 'register_date', 'current_president']
@@ -81,11 +137,17 @@ partidos_raw_df.loc[:, 'page_raw'] = partidos_raw_df['link'].str.split('/', expa
 partidos_raw_df.loc[:, 'page'] = partidos_raw_df['page_raw'].apply(lambda x: unquote(x))
 
 partidos_raw_df.head()
+# -
 
-# + hidden=true
+# ## Merge info
+
+# +
 partidos_df = partidos_raw_df.loc[:, ['name', 'electoral_num', 'affiliates', 'creation_date', 'register_date', 
                                      'current_president', 'code', 'page']]
+
+partidos_df = pd.merge(left=partidos_df, right=top_position, on='code', how='left')
 partidos_df.to_csv('./data/partidos_infos.csv', index=False)
+partidos_df.head(40)
 # -
 
 # ## Get logos
@@ -148,7 +210,7 @@ for file in os.listdir(path + 'raw/'):
         
     else:
         copyfile(in_file, out_file)
-        
+
 
 # +
 partidos = partidos_df['code'].tolist()
@@ -156,6 +218,3 @@ files = [f.split('.')[0] for f in os.listdir(path + 'png/')]
 
 not_found = [p for p in partidos if p not in files]
 not_found
-# -
-
-
