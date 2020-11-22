@@ -167,11 +167,11 @@ main_colors = colors_df.copy()
 # + hidden=true
 df = main_colors.groupby(['party'], as_index=False).agg({'key':'count'}).sort_values(by='key')
 px.bar(df, x='party', y='key')
-# -
 
+# + [markdown] heading_collapsed=true
 # ## Color clusters
 
-# +
+# + hidden=true
 rgb_features = main_colors['rgb'].apply(pd.Series)
 rgb_features.columns = ['rgb_r', 'rgb_g', 'rgb_b']
 
@@ -186,7 +186,7 @@ features = pd.concat([lab_features], axis=1)
 
 features.head()
 
-# +
+# + hidden=true
 # scaler = StandardScaler()
 # scaled_features = scaler.fit_transform(features)
 
@@ -203,7 +203,7 @@ cluster_size_df.columns = ['cluster_size', 'inertia']
 
 px.line(cluster_size_df, x='cluster_size', y='inertia')
 
-# +
+# + hidden=true
 # scaler = StandardScaler()
 # scaled_features = scaler.fit_transform(features)
 
@@ -212,13 +212,11 @@ model = KMeans(5)
 model.fit(scaled_features)
 
 labels = model.labels_
-# -
 
+# + hidden=true
 features_df.head()
 
-
-
-# +
+# + hidden=true
 features_df = features.copy()
 features_df.loc[:, 'cluster'] = labels
 features_df.loc[:, 'importance'] = main_colors['color_importance']
@@ -261,7 +259,7 @@ color_names = cluster_df.set_index('cluster')['cluster_name'].to_dict()
 
 cluster_df.head()
 
-# +
+# + hidden=true
 main_colors_fit = main_colors.copy()
 main_colors_fit.loc[:, 'color_label'] = features_df['cluster'].astype(str)
 main_colors_fit.loc[:, 'color_cluster'] = main_colors_fit['color_label'].apply(lambda x: color_names[x])
@@ -277,9 +275,10 @@ main_colors_fit.loc[:, 'lum'] = main_colors_fit['hsl'].apply(lambda x: x[2])
 actual_colors_map = main_colors_fit.set_index('key')['actual_color'].to_dict()
 
 main_colors_fit.head()
-# -
 
+# + hidden=true
 main_colors_fit.to_csv('./data/party_colors_infos.csv', index=False)
+# -
 
 # # Data Analysis
 
@@ -288,7 +287,8 @@ main_colors_fit.to_csv('./data/party_colors_infos.csv', index=False)
 party_df = pd.read_csv('./data/partidos_infos.csv')
 
 party_df.loc[:, 'year'] = party_df['creation_date'].str[-4:].astype(int)
-party_df.loc[:, 'number_disc'] = 10*np.floor(party_df['electoral_num']/10)
+party_df.loc[:, 'year_disc'] = 10*np.floor(party_df['year']/10).astype(int)
+party_df.loc[:, 'number_disc'] = 10*np.floor(party_df['electoral_num']/10).astype(int)
 
 party_colors_df = pd.read_csv('./data/party_colors_infos.csv')
 
@@ -297,6 +297,45 @@ party_colors_df.loc[:, 'color_label'] = party_colors_df['color_label'].astype(st
 party_colors_df = pd.merge(left=party_colors_df, right=party_df, left_on='party', right_on='code', how='left')
 
 party_colors_df.head()
+# -
+
+color_map = party_colors_df.set_index('color_cluster')['group_color_repr'].to_dict()
+actual_colors_map = party_colors_df.set_index('key')['actual_color'].to_dict()
+
+# ### Visão de todas as cores
+
+# +
+df = party_colors_df.sort_values(by=['color_cluster', 'hue', 'sat', 'lum'])
+df.loc[:, 'aux'] = 1
+
+df.loc[:, 'rank'] = df['hue'].rank(method='first')
+fig = px.bar(df, x='rank', y='aux', color='key',  color_discrete_map=actual_colors_map)
+fig.update_yaxes(showticklabels=False, title='')
+fig.update_xaxes(showticklabels=False, title='')
+fig.update_traces(marker_line_color='grey', marker_line_width=0.05)
+fig.update_layout(showlegend=False, 
+                  title='Todas as cores encontradas nos logos dos partidos',
+                  titlefont_size=18
+                 )
+
+plot(fig)
+
+# +
+df = party_colors_df.sort_values(by=['color_importance', 'hue', 'party'], ascending=False)
+df.loc[:, 'predominace'] = 100*df['color_importance']
+                                 
+fig = px.bar(df, y='party', x='predominace', color='key', 
+             color_discrete_map=actual_colors_map, height=700)
+fig.update_layout(
+    showlegend=False, 
+    yaxis_title='Partido', 
+    xaxis_title='Predominância da cor (%)',
+    title='Partidos e suas cores'
+)
+plot(fig)
+# -
+
+# ### Cores agrupadas
 
 # +
 # All clusters view
@@ -311,7 +350,7 @@ df.loc[:, 'presence'] = 100*df['party']/df['total_parties']
 
 df.sort_values(by='presence', ascending=False, inplace=True)
 
-fig = px.scatter(df, x='color_cluster', y='counter', color='color_label', size='presence', text='presence',
+fig = px.scatter(df, x='color_cluster', y='counter', color='color_cluster', size='presence', text='presence',
            color_discrete_map=color_map, size_max=90)
 
 fig.update_traces(
@@ -331,22 +370,6 @@ fig.update_layout(
 plot(fig)
 
 # +
-df = party_colors_df.sort_values(by=['color_cluster', 'hue', 'sat', 'lum'])
-df.loc[:, 'aux'] = 1
-
-df.loc[:, 'rank'] = df['hue'].rank(method='first')
-fig = px.bar(df, x='rank', y='aux', color='key',  color_discrete_map=actual_colors_map)
-fig.update_yaxes(showticklabels=False, title='')
-fig.update_xaxes(showticklabels=False, title='')
-fig.update_traces(marker_line_color='grey', marker_line_width=0.05)
-fig.update_layout(showlegend=False, 
-                  title='Todas as cores encontradas nos logos dos partidos',
-                  titlefont_size=18
-                 )
-
-plot(fig)
-
-# +
 df = party_colors_df.sort_values(by=['color_cluster', 'hue'])
 df.loc[:, 'aux'] = 1.0
 fig = px.bar(df, y='color_cluster', x=['aux', 'color_importance'], facet_col='variable',
@@ -358,28 +381,14 @@ fig.update_layout(showlegend=False, title='5 grandes grupos de cor')
 plot(fig)
 
 # +
-df = party_colors_df.sort_values(by=['color_importance', 'hue', 'party'], ascending=False)
-df.loc[:, 'predominace'] = 100*df['color_importance']
-                                 
-fig = px.bar(df, y='party', x='predominace', color='key', 
-             color_discrete_map=actual_colors_map, height=700)
-fig.update_layout(
-    showlegend=False, 
-    yaxis_title='Partido', 
-    xaxis_title='Predominância da cor (%)',
-    title='Partidos e suas cores'
-)
-plot(fig)
-
-# +
 df = party_colors_df\
-        .groupby(['party', 'color_cluster', 'color_label'], as_index=False)\
+        .groupby(['party', 'color_cluster', 'group_color_repr'], as_index=False)\
         .agg({'color_importance':'sum'})\
         .sort_values(by=['color_importance'], ascending=False)\
         .reset_index()
 
 df.loc[:, 'predominace'] = 100*df['color_importance']
-df.loc[:, 'color'] = df['color_label'].apply(lambda x: color_map[x])
+df.loc[:, 'color'] = df['group_color_repr']
 df.loc[:, 'key'] = df['index'].astype(str)
 
 aux_dict = df.set_index('key')['color'].to_dict()
@@ -398,25 +407,251 @@ plot(fig)
 
 # +
 df = party_colors_df\
-        .groupby(['party', 'color_cluster', 'color_label'], as_index=False)\
+        .groupby(['party', 'color_cluster', 'group_color_repr'], as_index=False)\
+        .agg({'color_importance':'sum'})\
+        .sort_values(by=['color_importance'])
+
+df.loc[:, 'predominace'] = 100*df['color_importance']
+
+df.loc[:, 'max_value'] = df.groupby(['color_cluster'])['predominace'].transform('max')
+
+df.loc[:, 'text'] = df['predominace'].apply(lambda x: '{:.0f}%'.format(x))
+df.loc[df['max_value'] == df['predominace'], 'text'] = df['predominace'].apply(lambda x: '<b>{:.0f}%<b>'.format(x))
+
+
+fig = px.bar(df, y='party', x='predominace', color='color_cluster', facet_col='color_cluster',
+             color_discrete_map=color_map, height=700, text='text', 
+             category_orders={'color_cluster':['Vermelhos', 'Escuros', 'Verdes', 'Amarelos', 'Claros']}
+            )
+
+fig.update_layout(
+    showlegend=False, 
+    yaxis_title='Partido',
+    title='Partidos e suas cores, por grupo de cor '
+)
+
+fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1]))
+
+fig.update_traces(textposition='outside')
+fig.update_xaxes(title='Predominância (%)', range=[0, 130])
+
+
+parties_order = df['party'].sort_values(ascending=False).unique().tolist()
+fig.update_yaxes(categoryorder='array', categoryarray=parties_order)
+
+plot(fig)
+# -
+# ### Posição política
+
+# +
+df = party_colors_df\
+        .groupby(['party', 'color_cluster', 'position'], as_index=False)\
         .agg({'color_importance':'sum'})\
         .sort_values(by=['color_importance'], ascending=False)
 
 df.loc[:, 'predominace'] = 100*df['color_importance']
                                  
-fig = px.bar(df, y='party', x='predominace', color='color_label', facet_col='color_cluster',
-             color_discrete_map=color_map, height=700, text='predominace')
+fig = px.bar(df, y='party', x='predominace', color='color_cluster', facet_col='position',
+             color_discrete_map=color_map, height=600, facet_col_spacing=0.12, 
+             category_orders={'position':['esquerda', 'centro', 'direita']})
 
 fig.update_layout(
     showlegend=False, 
     yaxis_title='Partido',
-    title='Partidos e suas cores, por grupo de cor'
+    title='Partidos, sua composição cromática e posição política'
 )
 
-fig.update_traces(texttemplate='%{text:.0f}%', textposition='outside')
+# fig.update_traces(texttemplate='%{x:.0f}%', textposition='outside')
 fig.update_xaxes(title='Predominância (%)', range=[0, 130])
-fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1]))
+fig.update_yaxes(matches=None, showticklabels=True)
+
+fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1].title()))
+# plot(fig)
+
+plot(fig)
+
+# +
+df = party_colors_df\
+        .groupby(['color_cluster', 'position'], as_index=False)\
+        .agg({'party':'nunique', 'color_importance':'sum'})\
+        .sort_values(by=['position', 'color_importance'], ascending=False)
+
+df.loc[:, 'total_importance'] = df.groupby(['position'])['color_importance'].transform('sum')
+df.loc[:, 'color_dist'] = 100*df['color_importance']/df['total_importance']
+                                 
+fig = px.bar(df, x='color_cluster', y='color_dist', color='color_cluster', barmode='relative',
+            height=600, facet_col_spacing=0.12, facet_col='position', color_discrete_map=color_map,
+             category_orders={'position':['esquerda', 'centro', 'direita']})
+
+fig.update_xaxes(matches=None, categoryorder='total descending', title='')
+fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1].title()))
+fig.update_traces(texttemplate='<b>%{y:.0f}%<b>', textposition='inside')
+
+
+fig.update_layout(
+    showlegend=False, 
+    yaxis_title='Proporção das cores (%)',
+    title='Composição cromática dos partidos de cada posição política'
+)
+
+
+plot(fig)
+
+# +
+df = party_colors_df\
+        .groupby(['color_cluster', 'position'], as_index=False)\
+        .agg({'party':'nunique', 'color_importance':'sum', 'affiliates':'sum'})\
+        .sort_values(by=['position', 'color_importance'], ascending=False)
+
+df.loc[:, 'prop_aff'] = df['color_importance']*df['affiliates']
+df.loc[:, 'total_weights'] = df.groupby(['position'])['prop_aff'].transform('sum')
+df.loc[:, 'color_dist_aff'] = 100*df['prop_aff']/df['total_weights']
+
+df.loc[:, 'total_importance'] = df.groupby(['position'])['color_importance'].transform('sum')
+df.loc[:, 'color_dist_area'] = 100*df['color_importance']/df['total_importance']
+ 
+                                 
+fig = px.bar(df, x='color_cluster', y='color_dist_aff', color='color_cluster', barmode='relative',
+            height=600, facet_col_spacing=0.12, facet_col='position', color_discrete_map=color_map,
+             category_orders={'position':['esquerda', 'centro', 'direita']})
+
+fig.update_xaxes(matches=None, categoryorder='total descending', title='', showticklabels=True)
+fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1].title()))
+fig.update_traces(texttemplate='<b>%{y:.0f}%<b>', textposition='inside')
+
+fig.update_layout(
+    height=500,
+    showlegend=False, 
+    title='Composição cromática dos partidos de cada posição política (Ponderada por número de afiliados)',
+    yaxis_title='Distribuição das cores x posição política (%)'
+)
+
+
+plot(fig)
+
+# -
+
+# ### Data de Criação
+
+# +
+df = party_colors_df\
+        .groupby(['year_disc'], as_index=False)\
+        .agg({'party':'nunique'})\
+        .sort_values(by=['year_disc'])
+
+fig = px.line(df, x='year_disc', y='party')
+
+fig.update_layout(
+    height=500,
+    showlegend=False, 
+    title='Criação dos partidos ainda em atividade, por década',
+    yaxis_title='Número de partidos'
+)
+fig.update_traces(mode='lines+markers')
+
+plot(fig)
+
+df = party_colors_df\
+        .groupby(['year_disc', 'position'], as_index=False)\
+        .agg({'party':'nunique'})\
+        .sort_values(by=['year_disc'])
+
+fig = px.line(df, x='year_disc', y='party', facet_col='position')
+
+fig.update_layout(
+    height=500,
+    showlegend=False, 
+    title='Criação dos partidos ainda em atividade, por década e posição política',
+    yaxis_title='Número de partidos'
+)
+
+fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1].title()))
+fig.update_traces(mode='lines+markers')
+
+plot(fig)
+
+# +
+df = party_colors_df\
+        .groupby(['year_disc', 'color_cluster'], as_index=False)\
+        .agg({'color_importance':'sum'})\
+        .sort_values(by=['year_disc'], ascending=True)
+
+
+df.loc[:, 'total_importance'] = df.groupby(['year_disc'])['color_importance'].transform('sum')
+df.loc[:, 'color_dist'] = 100*df['color_importance']/df['total_importance']
+
+fig = px.line(df, x='year_disc', y='color_dist', color='color_cluster', 
+              color_discrete_map=color_map
+              ,facet_col='color_cluster', facet_col_spacing=0.05
+             )
+
+fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1].title()))
+fig.update_xaxes(title='Década de criação')
+
+fig.update_layout(
+    height=500,
+    showlegend=False, 
+    title='Predominância de cada cor nos partidos criados, por década',
+    yaxis_title='Presença nas logos (%)'
+)
+
+fig.update_traces(mode='lines+markers')
+
+
 plot(fig)
 # -
 
+# ### Número eleitoral
 
+# +
+df = party_colors_df\
+        .groupby(['number_disc'], as_index=False)\
+        .agg({'party':'nunique'})\
+        .sort_values(by='number_disc', ascending=False)
+
+df.loc[:, 'number'] = df['number_disc'].apply(lambda x: '{} - {}'.format(x, x+9))
+
+df.loc[:, 'text'] = df['party'].apply(lambda x: '{} partido'.format(x))
+df.loc[df['party'] > 1, 'text'] = df['text'] + 's'
+
+fig = px.bar(df, y='number', x='party', orientation='h', text='text')
+fig.update_traces(textposition='inside')
+fig.update_layout(
+    yaxis_title='Faixa de número do partido',
+    title='Total de partidos ativos, por faixa de número eleitoral'
+)
+fig.update_xaxes(showgrid=False, title='', showticklabels=False)
+
+plot(fig)
+
+# +
+df = party_colors_df\
+        .groupby(['number_disc', 'color_cluster'], as_index=False)\
+        .agg({'party':'nunique', 'color_importance':'sum'})
+
+df.loc[:, 'number'] = df['number_disc'].apply(lambda x: '{} - {}'.format(x, x+9))
+df.loc[:, 'total_importance'] = df.groupby(['number_disc'])['color_importance'].transform('sum')
+df.loc[:, 'color_prop'] = 100*df['color_importance']/df['total_importance']
+#.apply(lambda x: '{} - {}'.format(x, x+9))
+
+
+df.sort_values(by=['number_disc'], ascending=True)
+yaxis_order = df['number'].tolist()
+
+fig = px.bar(df, y='number', x='color_prop', orientation='h', color_discrete_map=color_map,
+             color='color_cluster', facet_col='color_cluster', category_orders={'number':yaxis_order})
+fig.update_traces(texttemplate='%{x:.0f}%', textposition='outside')
+
+fig.update_layout(
+    yaxis_title='Faixa de número do partido',
+    title='Distribuição de cor dos partidos ativos, por faixa de número eleitoral',
+    showlegend=False
+)
+
+fig.update_layout(title={'y':0.97})
+
+fig.update_xaxes(showgrid=True, title='', showticklabels=False, range=[0,110])
+
+fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1].title()))
+
+plot(fig)
