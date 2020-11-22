@@ -94,11 +94,11 @@ colors_df.head()
 
 # + hidden=true
 colors_df.to_csv('./data/colors_with_background.csv', index=True)
-# -
-
-# # Color Prep Analysis
 
 # + [markdown] heading_collapsed=true
+# # Color Prep Analysis
+
+# + [markdown] heading_collapsed=true hidden=true
 # ## Remove background influence 
 
 # + hidden=true
@@ -133,7 +133,7 @@ real_colors.head()
 # + hidden=true
 real_colors.loc[:, ['party', 'rgb', 'hsl', 'lab', 'color_importance']].to_csv('./data/colors_cleaned.csv', index=False)
 
-# + [markdown] heading_collapsed=true
+# + [markdown] heading_collapsed=true hidden=true
 # ## Main Colors
 
 # + hidden=true
@@ -168,7 +168,7 @@ main_colors = colors_df.copy()
 df = main_colors.groupby(['party'], as_index=False).agg({'key':'count'}).sort_values(by='key')
 px.bar(df, x='party', y='key')
 
-# + [markdown] heading_collapsed=true
+# + [markdown] heading_collapsed=true hidden=true
 # ## Color clusters
 
 # + hidden=true
@@ -251,7 +251,7 @@ cluster_df.loc[:, 'color'] = cluster_df.apply(lambda x: 'RGB({},{},{})'.format(i
                                                                                int(x['g']/x['prop_weight']), 
                                                                                int(x['b']/x['prop_weight'])), axis=1)
 
-group_name = ['Claros', 'Escuros', 'Amarelos', 'Vermelhos', 'Verdes'] 
+group_name = ['Pastéis', 'Azuis', 'Amarelos', 'Vermelhos', 'Verdes'] 
 cluster_df.loc[:, 'cluster_name'] = group_name
 
 color_map = cluster_df.set_index('cluster')['color'].to_dict()
@@ -362,7 +362,7 @@ fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False)
 fig.update_xaxes(showgrid=False, tickfont_size=16)
 
 fig.update_layout(
-    title='Cores dos partidos, principais grupos',
+    title='Cores principais e presença nas logos dos partidos',
     titlefont_size=20,
     xaxis_title='', 
     yaxis_title='', 
@@ -379,6 +379,45 @@ fig.update_xaxes(matches=None)
 fig.update_layout(showlegend=False, title='5 grandes grupos de cor')
 
 plot(fig)
+
+# +
+#Labels
+df = party_colors_df.sort_values(by='hue')
+df.loc[:, 'aux'] = 1
+all_labels = df['key'].tolist() + df['color_cluster'].sort_values().unique().tolist() + ['Todas as cores']
+
+#Parents
+key_parents = df['color_cluster'].tolist()
+group_parents = ['Todas as cores' for f in range(0, df['color_cluster'].nunique())] 
+all_parents = key_parents + group_parents + ['']
+
+#Values
+key_values = df['aux'].tolist()
+
+group_values_df = df.groupby(['color_cluster'], as_index=False).agg({'aux':'sum'})
+group_values = group_values_df.sort_values(by='color_cluster')['aux'].tolist()
+
+all_values = key_values + group_values + [df['aux'].sum()]
+
+#Colors
+marker_colors = df['actual_color'].tolist() + df.sort_values(by='color_cluster')['group_color_repr'].unique().tolist() + ['white']
+
+import plotly.graph_objects as go
+
+
+fig = go.Figure(go.Treemap(
+        branchvalues = "total",
+    labels = all_labels,
+    parents = all_parents,
+    values = all_values,
+    marker_colors=marker_colors,
+    textinfo='none'
+))
+
+fig.show()
+# -
+
+# ### Partidos e Cores
 
 # +
 df = party_colors_df\
@@ -653,5 +692,104 @@ fig.update_layout(title={'y':0.97})
 fig.update_xaxes(showgrid=True, title='', showticklabels=False, range=[0,110])
 
 fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1].title()))
+
+plot(fig)
+# -
+
+# ### Representativade
+
+# +
+vereadores_sp = pd.read_csv('./data/vereadores_sp.csv')
+vereadores_sp.head()
+
+vereadores_sp.loc[:, 'party'] = vereadores_sp['partido']
+vereadores_sp.loc[vereadores_sp['party'] == 'PODEMOS', 'party'] = 'PODE'
+
+ver_sp_colors = pd.merge(left=vereadores_sp, right=party_colors_df, on='party', how='left')
+
+ver_sp_colors.loc[:, 'prop_occup'] = ver_sp_colors['ocupantes'] * ver_sp_colors['color_importance']
+ver_sp_colors.head(3)
+
+# +
+df = ver_sp_colors.sort_values(by=['color_cluster', 'hue', 'sat', 'lum'])
+df.loc[:, 'aux'] = 1
+
+df.loc[:, 'rank'] = df['hue'].rank(method='first')
+
+fig = px.bar(df, x='rank', y='aux', color='key',  color_discrete_map=actual_colors_map)
+fig.update_yaxes(showticklabels=False, title='')
+fig.update_xaxes(showticklabels=False, title='')
+fig.update_traces(marker_line_color='grey', marker_line_width=0.05)
+fig.update_layout(showlegend=False, 
+                  title='Todas as cores encontradas nos logos dos partidos',
+                  titlefont_size=18
+                 )
+
+plot(fig)
+
+# +
+df = ver_sp_colors.groupby(['color_cluster'], as_index=False).agg({'prop_occup':'sum'})
+
+fig = px.bar(df, x='color_cluster', y='prop_occup', color='color_cluster',  color_discrete_map=color_map)
+fig.update_yaxes(showticklabels=False, title='')
+fig.update_xaxes(title='', categoryorder='total descending')
+fig.update_traces(texttemplate='%{y:.0f} cadeiras', textposition='outside')
+fig.update_layout(showlegend=False, 
+                  title='Câmara de Vereadores de São Paulo, para 2021, por cor',
+                  titlefont_size=18
+                 )
+
+plot(fig)
+
+# +
+df = ver_sp_colors
+
+df["all"] = "all" # in order to have a single root node
+
+color_dict = actual_colors_map.copy()
+color_dict['(?)'] = 'white'
+color_dict['Escuros'] = 'black'
+
+fig = px.treemap(df, path=['all', 'color_cluster', 'key'], values='prop_occup', color='key',
+                  color_discrete_map=color_dict
+                )
+
+          
+fig.show()
+
+# +
+#Labels
+df = ver_sp_colors
+all_labels = df['key'].tolist() + df['color_cluster'].sort_values().unique().tolist()
+
+#Parents
+key_parents = df['color_cluster'].tolist()
+group_parents = ['' for f in range(0, df['color_cluster'].nunique())]
+all_parents = key_parents + group_parents
+
+#Values
+key_values = df['prop_occup'].tolist()
+
+group_values = df.groupby(['color_cluster'], as_index=False).agg({'prop_occup':'sum'})
+group_values = group_values.sort_values(by='color_cluster')['prop_occup'].tolist()
+
+all_values = key_values + group_values
+
+#Colors
+marker_colors = df['actual_color'].tolist() + df.sort_values(by='color_cluster')['group_color_repr'].unique().tolist()
+
+import plotly.graph_objects as go
+
+
+fig = go.Figure(go.Treemap(
+        branchvalues = "total",
+    labels = all_labels,
+    parents = all_parents,
+    values = all_values,
+    marker_colors=marker_colors,
+    textinfo='label'
+))
+
+fig.update_layout(title='Câmara de Vereadores de São Paulo para 2021, distribuída por cores')
 
 plot(fig)
