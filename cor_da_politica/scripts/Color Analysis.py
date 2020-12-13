@@ -39,19 +39,23 @@ analysis_folder = Path('./data/graphs')
 analysis_folder
 
 
-# +
 def plot(fig, write=False):
     fig.update_layout(template='plotly_white', font_family='Fira Sans')
-    
-    if write:
-        dir_name = analysis_folder/"{}/{}/raw".format(artist)
-        Path(dir_name).mkdir(parents=True, exist_ok=True)
-        
     fig.show()
-    
+
+
+# +
 def write(fig, name):
     fig.update_layout(template='plotly_white', font_family='Fira Sans', width=1000)
-    fig.write_image('{}/{}.png'.format(analysis_folder, name), scale=10)    
+    fig.write_image('{}/{}.png'.format(analysis_folder, name), scale=10)
+    
+def write_insta(fig, name):
+    fig.update_layout(template='plotly_white', 
+                      font_family='Fira Sans')
+    
+    plot(fig)
+
+    fig.write_image('{}/{}.png'.format(analysis_folder, name), scale=5)    
 
 
 # + [markdown] heading_collapsed=true
@@ -112,7 +116,7 @@ colors_df.to_csv('./data/colors_with_background.csv', index=True)
 # + [markdown] heading_collapsed=true
 # # Color Prep Analysis
 
-# + [markdown] heading_collapsed=true hidden=true
+# + [markdown] hidden=true
 # ## Remove background influence 
 
 # + hidden=true
@@ -229,7 +233,14 @@ for k in range(1, 30):
 cluster_size_df = pd.DataFrame.from_dict(inertias, orient='index').reset_index()
 cluster_size_df.columns = ['cluster_size', 'inertia']
 
-px.line(cluster_size_df, x='cluster_size', y='inertia')
+fig = px.line(cluster_size_df, x='cluster_size', y='inertia')
+fig.update_layout(
+    title='Soma das distâncias das observações ao centro do cluster atribuído (Inércia)<br>x Número de clusters', 
+    xaxis_title='Quantidade de clusters', 
+    font_size=15,
+    yaxis_title='Inércia')
+plot(fig)
+write(fig, 'methodology')
 
 # + hidden=true
 # scaler = StandardScaler()
@@ -395,6 +406,53 @@ for c in ['hue', 'sat', 'lum']:
     write(fig, 'party_colors_{}'.format(c))
 
 # +
+#Insta
+c = 'hue'
+df = party_colors_df.sort_values(by=c)
+df.loc[:, 'aux'] = 1
+all_labels = df['key'].tolist() + ['']
+
+#Parents
+key_parents = ['' for i in range(0, df.shape[0])]
+all_parents = key_parents + ['']
+
+#Values
+key_values = df['aux'].tolist()
+
+all_values = key_values + [df['aux'].sum()]
+
+#Colors
+marker_colors = df['actual_color'].tolist()
+
+import plotly.graph_objects as go
+
+
+fig = go.Figure(go.Treemap(
+        branchvalues = "total",
+    labels = all_labels,
+    parents = all_parents,
+    values = all_values,
+    marker_colors=marker_colors,
+    textinfo='none'
+))
+
+fig.update_layout(title='<b>Todas as cores extraídas<br> dos logos dos partidos<b>', titlefont_size=22)
+
+# fig.add_annotation(text='Autor: Adauto Braz',
+#         align='right',
+#         showarrow=False,
+#         font_size=11,
+#         xref='paper',
+#         yref='paper',
+#         x=1.08,
+#         y=-0.12)
+
+fig.update_layout(height=600, width=600)
+
+# plot(fig)
+write_insta(fig, 'insta_party_colors_{}'.format(c))
+
+# +
 #Labels
 df = party_colors_df.loc[:, ['hue', 'sat', 'lum']]
 
@@ -487,7 +545,58 @@ fig.add_annotation(text='Autor: Adauto Braz',
             y=-0.2)
 
 plot(fig)
-write(fig, 'color_clusters')
+# write(fig, 'color_clusters')
+
+# +
+# All clusters view
+df = party_colors_df\
+        .groupby(['color_cluster', 'color_label'], as_index=False)\
+        .agg({'color_importance':'sum', 'party':'nunique'})
+
+df.loc[:, 'counter'] = 1
+df.loc[:, 'counter'] = 1
+df.loc[:, 'total_parties'] = party_colors_df['party'].nunique()
+df.loc[:, 'presence'] = 100*df['party']/df['total_parties']
+df.loc[:, 'rank'] = df['presence'].rank(method='first', ascending=False) - 1
+
+df.loc[:, 'text'] = df['presence'].apply(lambda x: 'Presente em <b>{:.1f}%</b><br>dos partidos'.format(x))
+
+
+df.sort_values(by='rank', ascending=True, inplace=True)
+
+fig = px.bar(df, y='color_cluster', color='color_cluster', x='presence', text='text',
+           color_discrete_map=color_map)
+
+fig.update_traces(
+    marker=dict(line=dict(width=0.1,color='lightgray'), opacity=1))
+
+fig.update_traces(textposition='outside', textfont_size=14, texttemplate='<b>%{x:.0f}%</b>')
+
+fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False, range=[0,100])
+fig.update_yaxes(showgrid=False, tickfont_size=16)
+#                  , tickmode='array', tickvals=df['rank'], side='right', ticktext=df['text'])
+
+fig.update_layout(
+    title='<b>Pastéis e Azuis são as cores mais usadas</b>',
+    titlefont_size=22,
+    xaxis_title='Partidos que usam cor (%)',
+    yaxis_title='', 
+    showlegend=False)
+
+# fig.add_annotation(text='Autor: Adauto Braz',
+#             align='right',
+#             showarrow=False,
+#             font_size=11,
+#             xref='paper',
+#             yref='paper',
+#             x=1.08,
+#             y=-0.15)
+
+fig.update_layout(height=600, width=600)
+write_insta(fig, 'insta_color_clusters')
+# -
+
+df.head()
 
 # +
 df = party_colors_df.sort_values(by=['color_cluster', 'hue'])
@@ -548,11 +657,62 @@ fig.add_annotation(text='Autor: Adauto Braz',
 
 plot(fig)
 write(fig, 'color_clusters_all_colors')
-# -
 
+# + code_folding=[]
+# Instagram
+# Labels
+df = party_colors_df.sort_values(by='hue')
+df.loc[:, 'aux'] = 1
+all_labels = df['key'].tolist() + df['color_cluster'].sort_values().unique().tolist() + ['Todas as cores']
+
+#Parents
+key_parents = df['color_cluster'].tolist()
+group_parents = ['Todas as cores' for f in range(0, df['color_cluster'].nunique())] 
+all_parents = key_parents + group_parents + ['']
+
+#Values
+key_values = df['aux'].tolist()
+
+group_values_df = df.groupby(['color_cluster'], as_index=False).agg({'aux':'sum'})
+group_values = group_values_df.sort_values(by='color_cluster')['aux'].tolist()
+
+all_values = key_values + group_values + [df['aux'].sum()]
+
+#Colors
+marker_colors = df['actual_color'].tolist() + df.sort_values(by='color_cluster')['group_color_repr'].unique().tolist() + ['white']
+
+import plotly.graph_objects as go
+
+
+fig = go.Figure(go.Treemap(
+        branchvalues = "total",
+    labels = all_labels,
+    parents = all_parents,
+    values = all_values,
+    marker_colors=marker_colors,
+    textinfo='none'
+))
+
+fig.update_traces(textfont_size=14)
+
+# fig.add_annotation(text='Autor: Adauto Braz',
+#             align='right',
+#             showarrow=False,
+#             font_size=11,
+#             xref='paper',
+#             yref='paper',
+#             x=1.08,
+#             y=-0.12)
+
+
+fig.update_layout(title='<b>Após agrupamento...<br>5 grupos de cor<b>', titlefont_size=22, width=600, height=600)
+# plot(fig)
+write_insta(fig, 'insta_color_clusters_all_colors')
+
+# + [markdown] heading_collapsed=true
 # ### Partidos e Cores
 
-# +
+# + hidden=true
 df = party_colors_df\
         .groupby(['party', 'color_cluster', 'group_color_repr'], as_index=False)\
         .agg({'color_importance':'sum'})\
@@ -576,9 +736,9 @@ fig.update_layout(
 fig.update_xaxes(title='Predominância (%)')
 fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1]))
 plot(fig)
-write(fig, 'party_colors_disc')
+# write(fig, 'party_colors_disc')
 
-# +
+# + hidden=true
 df = party_colors_df\
         .groupby(['party', 'color_cluster', 'group_color_repr'], as_index=False)\
         .agg({'color_importance':'sum'})\
@@ -614,8 +774,8 @@ parties_order = df['party'].sort_values(ascending=False).unique().tolist()
 fig.update_yaxes(categoryorder='array', categoryarray=parties_order)
 
 plot(fig)
-write(fig, 'party_colors_per_cluster')
-# +
+# write(fig, 'party_colors_per_cluster')
+# + hidden=true
 df = party_colors_df\
         .groupby(['party', 'color_cluster', 'group_color_repr'], as_index=False)\
         .agg({'color_importance':'sum'})\
@@ -667,8 +827,6 @@ write(fig, 'cluster_colors_top_10_party')
 
 # ### Posição política
 
-color_map
-
 # +
 df = party_colors_df\
         .groupby(['party', 'color_cluster', 'position'], as_index=False)\
@@ -704,7 +862,39 @@ fig.add_annotation(text='Autor: Adauto Braz',
             y=-0.18)
 
 plot(fig)
-write(fig, 'party_colors_per_position')
+# write(fig, 'party_colors_per_position')
+
+# +
+# Insta
+df = party_colors_df\
+        .groupby(['party', 'color_cluster', 'position'], as_index=False)\
+        .agg({'color_importance':'sum'})\
+        .sort_values(by=['color_importance'], ascending=False)
+
+df.loc[:, 'predominace'] = 100*df['color_importance']
+df.loc[:, 'Grupo de Cor'] = df['color_cluster']
+                                 
+fig = px.bar(df, y='party', x='predominace', color='Grupo de Cor', facet_col='position', 
+             color_discrete_map=color_map, height=600, facet_col_spacing=0.2, 
+             category_orders={'position':['esquerda', 'centro', 'direita']})
+
+fig.update_layout(
+    showlegend=True, 
+    margin_t=100,
+    yaxis_title='Partido',
+    title='<b>Partidos, sua composição cromática e posição política</b>',
+    titlefont_size=22
+)
+
+# fig.update_traces(texttemplate='%{x:.0f}%', textposition='outside')
+fig.update_xaxes(title='Predominância (%)', range=[0, 130])
+fig.update_yaxes(matches=None, showticklabels=True)
+
+fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1].title()))
+
+fig.update_layout(height=600, width=600, showlegend=False)
+plot(fig)
+write(fig, 'insta_party_colors_per_position')
 
 # +
 df = party_colors_df\
@@ -721,7 +911,7 @@ fig = px.bar(df, x='color_cluster', y='color_dist', color='color_cluster', barmo
 
 fig.update_xaxes(matches=None, categoryorder='total descending', title='', tickfont_size=14)
 fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1].title()))
-fig.update_traces(texttemplate='<b>%{y:.0f}%<b>', textposition='inside')
+fig.update_traces(texttemplate='<b>%{y:.0f}%<b>', textposition='outside')
 
 
 fig.update_layout(
@@ -744,6 +934,47 @@ fig.add_annotation(text='Autor: Adauto Braz',
 
 plot(fig)
 write(fig, 'position_colors')
+
+# +
+df = party_colors_df\
+        .groupby(['color_cluster', 'position'], as_index=False)\
+        .agg({'party':'nunique', 'color_importance':'sum'})\
+        .sort_values(by=['position', 'color_importance'], ascending=False)
+
+df.loc[:, 'total_importance'] = df.groupby(['position'])['color_importance'].transform('sum')
+df.loc[:, 'color_dist'] = 100*df['color_importance']/df['total_importance']
+
+df.loc[:, 'max_value'] = df.groupby(['position'])['color_dist'].transform('max')
+
+df.loc[:, 'position'] = df['position'].str.title()
+
+df.loc[:, 'text'] = df['color_dist'].apply(lambda x: '{:.0f}%'.format(x))
+df.loc[df['max_value'] == df['color_dist'], 'text'] = df['color_dist'].apply(lambda x: '<b>{:.0f}%<b>'.format(x))
+
+
+fig = px.bar(df, x='position', y='color_dist', color='color_cluster', barmode='stack', text='text',
+            height=600, facet_col_spacing=0.12, color_discrete_map=color_map,
+             category_orders={'position':['Esquerda', 'Centro', 'Direita']})
+
+# fig.update_xaxes(matches=None, categoryorder='total descending', title='', tickfont_size=14)
+# fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1].title()))
+fig.update_traces(textposition='inside', insidetextanchor = 'middle', textfont_size=14)
+fig.update_yaxes(showgrid=False, tickvals=[])
+
+
+fig.update_layout(
+    showlegend=False, 
+    yaxis_title='Proporção das cores nos partidos(%)',
+    yaxis_titlefont_size=16,
+    xaxis_title='Posição política',
+    xaxis_titlefont_size=16,
+    title='<b>A Esquerda é vermelha; o Centro e a Direita, azuis</b>',
+    titlefont_size=22,
+    height=600,
+    width=600
+)
+
+write_insta(fig, 'insta_position_colors')
 
 # +
 df = party_colors_df\
@@ -776,7 +1007,7 @@ fig.update_layout(
 
 
 plot(fig)
-write(fig, 'position_colors_pond_aff')
+# write(fig, 'position_colors_pond_aff')
 
 # +
 df = party_colors_df\
@@ -823,11 +1054,51 @@ fig.add_annotation(text='Autor: Adauto Braz',
 
 plot(fig)
 write(fig, 'colors_position')
-# -
-
-# ### Data de Criação
 
 # +
+df = party_colors_df\
+        .groupby(['color_cluster', 'position'], as_index=False)\
+        .agg({'party':'nunique', 'color_importance':'sum'})\
+        .sort_values(by=['position', 'color_importance'], ascending=False)
+
+df.loc[:, 'total_importance'] = df.groupby(['color_cluster'])['color_importance'].transform('sum')
+df.loc[:, 'color_dist'] = 100*df['color_importance']/df['total_importance']
+
+df.loc[:, 'max'] = df.groupby(['color_cluster'])['color_dist'].transform('max')
+
+df.loc[:, 'text'] = df['color_dist'].apply(lambda x: '{:.0f}%'.format(x))
+df.loc[df['color_dist'] == df['max'], 'text'] = df['color_dist'].apply(lambda x: '<b>{:.0f}%<b>'.format(x))
+                                 
+fig = px.bar(df, y='color_cluster', x='color_dist', color='color_cluster', barmode='relative', text='text',
+            height=600, facet_col_spacing=0.12, facet_col='position', color_discrete_map=color_map,
+             category_orders={'position':['esquerda', 'centro', 'direita']})
+
+fig.update_xaxes(matches=None, categoryorder='total descending',  
+                 tickfont_size=13, range=[0,110], tickvals=[0,100], title='Proporção da cor<br> x posição(%)'
+)
+
+fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1].title()))
+fig.update_traces(textposition='outside')
+
+
+fig.update_layout(
+    margin_t=140,
+    showlegend=False, 
+    yaxis_titlefont_size=16,
+    yaxis_title='',
+    title='<b>Vermelho à Esquerda; Amarelo ao Centro;<br>Azuis, Verdes e Pastéis à Direita</b>',
+    titlefont_size=22,
+    height=600,
+    width=600
+)
+
+write_insta(fig, 'insta_colors_position')
+# write(fig, 'colors_position')
+
+# + [markdown] heading_collapsed=true
+# ### Data de Criação
+
+# + hidden=true
 df = party_colors_df\
         .groupby(['year_disc'], as_index=False)\
         .agg({'party':'nunique'})\
@@ -864,7 +1135,7 @@ fig.update_traces(mode='lines+markers')
 
 plot(fig)
 
-# +
+# + hidden=true
 df = party_colors_df\
         .groupby(['year_disc', 'color_cluster'], as_index=False)\
         .agg({'color_importance':'sum'})\
@@ -961,11 +1232,11 @@ fig.update_xaxes(showgrid=True, title='', showticklabels=False, range=[0,110])
 fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1].title()))
 
 plot(fig)
-# -
 
+# + [markdown] heading_collapsed=true
 # ### Representativade
 
-# +
+# + hidden=true
 vereadores_sp = pd.read_csv('./data/vereadores_sp.csv')
 vereadores_sp.head()
 
@@ -977,7 +1248,7 @@ ver_sp_colors = pd.merge(left=vereadores_sp, right=party_colors_df, on='party', 
 ver_sp_colors.loc[:, 'prop_occup'] = ver_sp_colors['ocupantes'] * ver_sp_colors['color_importance']
 ver_sp_colors.head(3)
 
-# +
+# + hidden=true
 df = ver_sp_colors.sort_values(by=['color_cluster', 'hue', 'sat', 'lum'])
 df.loc[:, 'aux'] = 1
 
@@ -994,7 +1265,7 @@ fig.update_layout(showlegend=False,
 
 plot(fig)
 
-# +
+# + hidden=true
 df = ver_sp_colors.groupby(['color_cluster'], as_index=False).agg({'prop_occup':'sum'})
 
 fig = px.bar(df, x='color_cluster', y='prop_occup', color='color_cluster',  color_discrete_map=color_map)
@@ -1019,7 +1290,7 @@ fig.add_annotation(text='Autor: Adauto Braz',
 plot(fig)
 write(fig, 'sp_camara_vereadores')
 
-# +
+# + hidden=true
 df = ver_sp_colors
 
 df["all"] = "all" # in order to have a single root node
@@ -1035,7 +1306,7 @@ fig = px.treemap(df, path=['all', 'color_cluster', 'key'], values='prop_occup', 
           
 fig.show()
 
-# +
+# + hidden=true
 #Labels
 df = ver_sp_colors
 all_labels = df['key'].tolist() + df['color_cluster'].sort_values().unique().tolist()
@@ -1085,6 +1356,3 @@ fig.add_annotation(text='Autor: Adauto Braz',
 
 plot(fig)
 write(fig, 'sp_colors_details')
-# -
-
-
