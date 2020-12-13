@@ -25,16 +25,18 @@ import plotly.express as px
 
 # ## Billboard
 
+billboard.charts()
+
+
 downloaded_years = [int(f.split('.csv')[0]) for f in os.listdir('./data/per_year')]
+downloaded_years = []
 fetch_years = [i for i in range(2010, 2021) if i not in downloaded_years]
 
-fetch_years
+fetch_years = [2020]
 
 # +
 # Extract data from billboard monthly
 charts = []
-
-date_array = chart.date.split('-')
 
 for y in fetch_years:
     if y == 2020:
@@ -54,15 +56,16 @@ for y in fetch_years:
         songs = []
         artists = []
         weeks = []
+        positions = []
 
-        for s in chart:
+        for i in range(0, len(chart)):
+            s = chart[i]
             songs.append(s.title)
             artists.append(s.artist)
             weeks.append(s.weeks)
+            positions.append(i+1)
 
-        song = chart[0]  # Get no. 1 song on chart
-
-        charts_df = pd.DataFrame({'artist':artists, 'song':songs, 'weeks':weeks})
+        charts_df = pd.DataFrame({'artist':artists, 'song':songs, 'weeks':weeks, 'positions':positions})
         charts_df.loc[:, 'week'] = chart.date
 
         year_charts.append(charts_df)
@@ -76,21 +79,21 @@ for y in fetch_years:
 
 # ## Prep
 
-charts_df = pd.read_csv('./data/charts_2010_2020.csv')
-charts_df.head()
+all_files = [pd.read_csv('./data/per_year/{}'.format(f)) for f in os.listdir('./data/per_year')]
+all_charts_df = pd.concat(all_files).reset_index()
+all_charts_df.head()
+
+all_charts_df = pd.read_csv('./data/per_year/2020.csv')
+all_charts_df.head()
 
 # +
-songs_df = charts_df\
+songs_df = all_charts_df\
             .groupby(['artist', 'song'], as_index=False)\
-            .agg({'weeks':['count', 'max'], 'week':['min', 'max'], })
+            .agg({'weeks':['count', 'max'], 'week':['min', 'max'], 'positions':'min'})
 
-songs_df.columns = ['artist', 'song', 'weeks_captured', 'total_weeks', 'first_week', 'last_week'] 
-
-# +
-#px.histogram(songs_df, x='weeks_captured')
-
-# +
-# Filter only songs with at least 8 weeks on billboard 
+songs_df.columns = ['artist', 'song', 'weeks_captured', 'total_weeks', 'first_week', 'last_week', 'peak'] 
 # -
 
-songs_df
+songs_df.sort_values(by='total_weeks', ascending=False)
+
+
