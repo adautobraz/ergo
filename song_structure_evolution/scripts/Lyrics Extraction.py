@@ -115,9 +115,10 @@ not_found_sp = not_found_df.join(spotify_refs_df.set_index('song_id'), how='left
 not_found_sp.loc[:, 'artists_spotify'] = not_found_sp['artists.1'].fillna('[]').apply(lambda x: [f['name'] for f in eval(x)])
 
 not_found_dict = not_found_sp.sort_index(ascending=False).to_dict(orient='index')
-
-
 # -
+
+not_found_sp.head()
+
 
 def check_match(song_obj, name, artist):
     
