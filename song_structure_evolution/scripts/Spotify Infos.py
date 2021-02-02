@@ -23,6 +23,10 @@ from spotipy.oauth2 import SpotifyClientCredentials
 
 from ergo_utilities import songs_info
 
+import unicodedata as ud
+import re
+import os
+
 # +
 with open('../.config') as f:
     credentials=json.load(f)
@@ -35,50 +39,71 @@ pd.set_option('max_columns', None)
 
 
 # +
-def search_for_track(track, artist):
-    results = sp.search(q=track + '+' + artist, type='track')
+def search_for_track_by_artist(track, artist):
+    query = f"{track} {artist}"
+    results = sp.search(q=query)
     items = results['tracks']['items']
     if len(items) > 0:
-        return items[0]
+        most_popular = pd.DataFrame(items).sort_values(by='popularity', ascending=False).iloc[0].to_dict()
+        return most_popular
     else:
-        return None
+        return {}
     
-def get_tracks_infos_df(tracks_artists_array):
+def get_tracks_infos_df(tracks_artists_array, to_print=False):
     
     tracks_info = []
     for p in tracks_artists_array:
-        artist_name = p[1].lower()
-        if 'feat' in artist_name:
-            artist_name = artist_name.split('featuring')[0].strip()
+        
+          # compare composed
+        
+        artist_name = ud.normalize('NFKC',str(p[1])).lower()
+        track_name = ud.normalize('NFKC',str(p[0])).lower()
+        
+        if to_print:
+            print(f"{track_name} - {artist_name}")
+        
+        track = search_for_track_by_artist(track_name, artist_name)
+        
+        if not track:
+            # If there's no track, let's normaliza track name
+            track_name = re.split('[\(\[]', track_name)[0].strip()
+            if 'feat' in artist_name or 'and' in artist_name:
+                artist_name =artist_name.split('feat')[0].strip()
+                artist_name = artist_name.split('and')[0].strip()
+                
+            if to_print:
+                print(f"{track_name} - {artist_name}")
+                
+            track = search_for_track_by_artist(track_name, artist_name)
             
-        track_name = p[0]
-        
-        track = search_for_track(track_name, artist_name)
-        
         tracks_info.append(track)
         
     return tracks_info
-# +
-songs = pd.read_csv('./data/charts_2010_2020.csv')
-songs.head()
 
-keys_id = songs.iloc[:, :2].drop_duplicates()
-keys_id.loc[:, 'key'] = keys_id['artist'].str.lower().str.replace(' ', '_') + '__' + keys_id['song'].str.lower().str.replace(' ', '_')
-keys_id = keys_id.set_index('key').to_dict(orient='index')
+
 # -
+all_billboard_charts = [f for f in os.listdir('./data/billboard_charts/raw_wikipedia/') if '.csv' in f and f not in os.listdir('./data/billboard_charts/spotify_ref/')]
 
-# for k, v in keys_id:
-tracks = [(v['song'], v['artist']) for k,v in keys_id.items()][:3]
-# tracks
-tracks_info = get_tracks_infos_df(tracks)
+all_billboard_charts
 
-tracks
+for file in all_billboard_charts:
+    print(file)
+    
+    chart_df = pd.read_csv(f"./data/billboard_charts/raw_wikipedia/{file}")
+    songs_dict = chart_df.to_dict(orient='index')
 
-# +
-# df = pd.json_normalize(tracks_info)
-# df.columns = [c.replace('.', '_') for c in df.columns.tolist()]
+    tracks = [(v['song_title'], v['artists']) for k,v in songs_dict.items()]
+    tracks_info = get_tracks_infos_df(tracks)
 
-# df['artists'] = df['artists'].apply(lambda x: [a['name'] for a in x])
+    tracks_infos_df = pd.json_normalize(tracks_info, errors='ignore')
 
-results = pd.DataFrame(tracks_info)
-results.head()
+    spotify_infos = pd.concat([chart_df, tracks_infos_df], axis=1)
+    
+    spotify_infos.loc[:, 'year'] = file.split('.csv')[0]
+    
+    spotify_infos.to_csv(f"./data/billboard_charts/spotify_ref/{file}", index=False)
+    spotify_infos.head()
+
+dict_ = songs.loc[34].to_dict()
+test = [(dict_['song_title'], dict_['artists'])]
+tracks_info = get_tracks_infos_df(test, True)
