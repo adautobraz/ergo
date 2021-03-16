@@ -34,6 +34,8 @@ import string
 from fuzzywuzzy import fuzz
 from difflib import Differ
 import copy
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
 pd.set_option('max_columns', None)
@@ -96,6 +98,7 @@ total_songs_per_year = structure_df.groupby(['year'])['song_id'].nunique().to_di
 
 structure_df.head(1)
 
+
 # + hidden=true
 # structure_df.loc[structure_df['tag_type'] == 'other']
 
@@ -104,49 +107,6 @@ structure_df.head(1)
 
 # + hidden=true
 # print(structure_df.loc[structure_df['song_id'] == '2010_77'].iloc[0]['lyrics'])
-
-# + hidden=true
-# Song structure representation
-df = structure_df.copy()
-
-df = df\
-        .groupby(['song_id', 'year', 'tag_type', 'name', 'artist_chart'], as_index=False)\
-        .agg({'lines_on_element':'sum', 'order':'count'})\
-        .sort_values(by='song_id')
-
-df.loc[:, 'total_lines'] = df.groupby(['song_id'])['lines_on_element'].transform('sum')
-df.loc[:, 'percentage'] = df['lines_on_element']/df['total_lines']
-
-song_repr_df = pd.pivot_table(df, index=['song_id', 'year', 'name', 'artist_chart'], columns='tag_type', values='percentage')\
-            .fillna(0).reset_index().sort_index()
-
-# Song structure
-st_df = structure_df\
-        .sort_values(by=['song_id', 'rank'])\
-        .groupby(['song_id'])\
-        ['tag_type'].apply(lambda x: '<br>'.join(x.str.title()))\
-        .to_frame()
-st_df.columns = ['song_structure']
-
-song_repr_df = pd.merge(left=song_repr_df, right=st_df, on='song_id')
-
-song_repr_df.head()
-
-# + hidden=true
-# Song distance from average representation
-dim_cols = structure_df['tag_type'].unique().tolist()
-
-mean_yearly_repr = song_repr_df.groupby(['year']).agg({c:'mean' for c in dim_cols})
-all_songs_repr = song_repr_df.loc[:, dim_cols].values
-
-songs_dist_df = pd.DataFrame(cdist(all_songs_repr, mean_yearly_repr.values, metric='euclidean'))\
-                        .unstack().to_frame().reset_index()
-
-songs_dist_df.columns = ['year_index', 'song_index', 'distance']
-songs_dist_df.loc[:, 'year'] = songs_dist_df['year_index'].apply(lambda x: mean_yearly_repr.index.tolist()[x])
-songs_dist_df.loc[:, 'song_id'] = songs_dist_df['song_index'].apply(lambda x: song_repr_df['song_id'].tolist()[x])
-songs_dist_df.head()
-
 
 # + hidden=true
 def plot(fig):
@@ -221,6 +181,24 @@ fig.update_layout(
 )
 plot(fig)
 
+# + code_folding=[]
+# Number of structures, per song
+
+df = structure_df.drop_duplicates(subset=['song_id'])
+
+fig = px.histogram(df, x='max_rank', histnorm='percent')
+fig.update_layout(
+    title='Distribution of number of elements, per song',
+    yaxis_title='Percentage of songs (%)',
+    xaxis_title='Number of elements'
+)
+plot(fig)
+
+df.sort_values(by='chart_position')\
+    .drop_duplicates(subset=['max_rank'])\
+    .sort_values(by='year', ascending=False).head(1)
+
+
 # + code_folding=[0]
 # What are the most commont strutucture elements? How often they use to appear? 
 
@@ -245,8 +223,8 @@ fig.update_yaxes(categoryorder='total ascending', row=1, col=1)
 fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1].replace('_', ' ').title()))
 
 fig.update_xaxes(matches=None, showticklabels=False)
-fig.update_xaxes(row=1, col=1, title='Percentage of songs<br>that use element', range=[0,110])
-fig.update_xaxes(row=1, col=2, title='Elements per song')
+fig.update_xaxes(row=1, col=1, title='Percentage of songs<br>that use element', range=[0,110], dtick=100)
+fig.update_xaxes(row=1, col=2, title='Elements per song', dtick=1)
 
 fig.update_traces(texttemplate = '%{x:.1f}', textposition='outside', row=1, col=2)
 fig.update_traces(texttemplate = '%{x:.1f}%', textposition='outside', row=1, col=1)
@@ -267,19 +245,75 @@ fig.update_layout(
 plot(fig)
 
 # + code_folding=[0]
-# Number of structures, per song
+# Song element distribution
 
-df = structure_df.drop_duplicates(subset=['song_id'])
+df = structure_df.copy()
 
-fig = px.histogram(df, x='max_rank', histnorm='percent')
-fig.update_layout(
-    title='Distribution of number of elements, per song',
-    yaxis_title='Percentage of songs (%)',
-    xaxis_title='Number of elements'
-)
+df = df\
+        .groupby(['song_id', 'tag_type'], as_index=False)\
+        .agg({'order':'count'})\
+        .groupby(['tag_type', 'order'], as_index=False)\
+        .agg({'song_id':'nunique'})
+        
+        
+df.loc[:, 'total_songs'] = structure_df['song_id'].nunique()
+df.loc[:, 'percentage'] = 100*df['song_id']/df['total_songs']
+
+df.loc[:, 'total_songs_with_element'] = df.groupby(['tag_type'])['song_id'].transform('sum')
+df.loc[:, 'pct_distribution'] = 100*df['song_id']/df['total_songs_with_element']
+
+df.loc[:, 'rank'] = df.groupby(['tag_type'])['pct_distribution'].rank(ascending=False)
+
+df.loc[:, 'cumul_dist'] = df.sort_values(by='rank').groupby(['tag_type'])['pct_distribution'].cumsum()
+df.loc[:, 'distinct'] = df.groupby(['tag_type'])['order'].transform('nunique')
+df.loc[:, 'overall_rank'] = df['percentage'].rank(ascending=False)
+
+grey = 160
+color = 'rgb({0},{0},{0})'.format(grey)
+
+# Top elements
+top = df.loc[df['overall_rank'] <= 15].copy()
+top.loc[:, 'text'] = top.apply(lambda x: "{} {}".format(x['order'], x['tag_type']), axis=1)
+top.loc[(top['order'] > 1) & (top['tag_type'].str[-1] != 's'), 'text'] = top['text'] + 's'
+
+fig = px.bar(top, y='overall_rank', x='percentage', color='tag_type', 
+             orientation='h', color_discrete_map=color_map_dict,
+             text='text'
+            )
+
+fig.update_yaxes(showticklabels=True, autorange='reversed', tickprefix='Top ', 
+                 tickvals=[1, 5, 10, 15], title='Ranking')
+fig.update_xaxes(ticksuffix='%', dtick=10, color=color, range=[0,65])
+fig.update_xaxes(title='Percentage of songs with combination', titlefont_color='black')
+
+fig.update_traces(textposition='outside')
+
+fig.update_layout(title='Most common same-element combinations')
+
 plot(fig)
-# -
 
+
+# Distribution per element
+fig = px.bar(df.sort_values(by='distinct'), x='order', y='pct_distribution', facet_col='tag_type', orientation='v',
+             facet_col_wrap=4)
+
+fig.update_yaxes(showticklabels=False, range=[0,120], dtick=100, title='', color=color)
+fig.update_yaxes(showticklabels=True, col=1, ticksuffix='%')
+
+fig.update_xaxes(showticklabels=True, range=[0.5,6.5], dtick=1, color=color)
+
+fig.update_layout(
+    showlegend=False, height=800,
+    title='Song element quantity distribution',
+    margin_t=120
+)
+
+fig.update_traces(texttemplate='%{y:.1f}%', textposition='outside')
+fig.for_each_annotation(lambda x: x.update(text="{}".format(x.text.split('=')[1].title()), font_color='black'))
+plot(fig)
+
+
+# -
 
 # ## Structure time evolution
 
@@ -371,7 +405,28 @@ fig.update_xaxes(title='Year', row=1)
 
 fig.update_layout(
     showlegend=False, 
-    title = 'How much song elements are used in songs?',
+    title = 'How much of each song element is used in songs?',
+    font_size=13,
+    margin_t=100
+)
+
+plot(fig)
+
+
+fig = px.line(df, x='year', y='share_in_song', facet_col='Element', 
+              color='Element', facet_col_spacing=0.1, facet_col_wrap=3, 
+              color_discrete_map=color_map_dict
+             )
+
+fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1].replace('_', ' ').title()))
+
+# fig.update_yaxes(range=[0,4])
+fig.update_yaxes(col=1, title='Presence in song', ticksuffix='%')
+fig.update_xaxes(title='Year', row=1)
+
+fig.update_layout(
+    showlegend=False, 
+    title = 'How much does each element represent of the song?',
     font_size=13,
     margin_t=100
 )
@@ -448,6 +503,25 @@ plot(fig)
 # )
 
 # plot(fig)
+# -
+
+song_info_dict = structure_df\
+                    .drop_duplicates(subset=['song_id'])\
+                    .set_index(['song_id'])\
+                    .loc[:, ['name', 'artist_chart', 'year', 'decade']]\
+                    .to_dict(orient='index')
+
+
+def get_example_song(raw_df):
+    df = raw_df.copy()
+    
+    df.loc[:, 'song_example_id'] = df.apply(lambda x: '{}_{}'.format(x['year'], x['chart_position']), axis=1)
+    df.loc[:, 'song_example'] = df['song_example_id'].apply(lambda x: song_info_dict[x]['name'])                                      
+    df.loc[:, 'artist'] = df['song_example_id'].apply(lambda x: song_info_dict[x]['artist_chart'])                                      
+    df.loc[:, 'chart_position'] = df['chart_position'] + 1                                   
+
+    return df
+
 
 # + code_folding=[0]
 # How does a song start? View per year
@@ -456,19 +530,22 @@ aux = structure_df.loc[structure_df['rank'] <= 1].copy()
 aux.loc[:, 'category'] = 'Other'
 aux.loc[aux['tag_type'].isin(['intro', 'chorus', 'verse']), 'category'] = aux['tag_type'].str.title()
 
+
 df = aux\
         .groupby(['category','year'], as_index=False)\
-        .agg({'song_id':'count'})
+        .agg({'song_id':'count', 'chart_position':'min'})
 
 df.loc[:, 'total_songs_on_year'] = df.groupby(['year'])['song_id'].transform('sum')
 
+df = get_example_song(df)
 df.loc[:, 'percentage'] = 100*df['song_id']/df['total_songs_on_year']
 
 df.loc[:, 'rolling_percentage'] = df.loc[:, 'percentage'].rolling(window=2).mean()
 
 df.loc[:, 'First Element'] = df['category']
 
-fig = px.line(df, x='year', y='rolling_percentage', color='First Element', color_discrete_map=color_map_dict)
+fig = px.line(df, x='year', y='rolling_percentage', color='First Element', 
+              color_discrete_map=color_map_dict, hover_name='song_example', hover_data=['artist', 'chart_position'])
 fig.update_layout(
     title='How do songs start?<br>A yearly evolution on the type of first song element',
     yaxis_title='Songs starting with element',
@@ -500,7 +577,7 @@ df.loc[df['class'] == 'Intro', 'class'] = 'Intro' + df['next_structure'].apply(l
 # Lyrical foreshadowing
 df = df\
         .groupby(['year', 'class'], as_index=False)\
-        .agg({'song_id':'nunique'})
+        .agg({'song_id':'nunique', 'chart_position':'min'})
 
 df.loc[:, 'type'] = 'detail'
 df.loc[:, 'pop_overture'] = False
@@ -511,14 +588,17 @@ df.loc[:, 'rate'] = 100*df['song_id']/df['total_songs']
 
 df.loc[:, 'smooth'] = df.sort_values(by='year').groupby(['class'])['rate'].apply(lambda x: x.rolling(window=2).mean())
 
-tot_df = df.groupby(['year', 'pop_overture'], as_index=False).agg({'song_id':'sum'})
+tot_df = df.groupby(['year', 'pop_overture'], as_index=False).agg({'song_id':'sum', 'chart_position':'min'})
+
+tot_df = get_example_song(tot_df)
+
 tot_df.loc[:, 'total_songs'] = tot_df.groupby(['year'])['song_id'].transform('sum')
 tot_df.loc[:, 'rate'] = 100*tot_df['song_id']/tot_df['total_songs']
 
 tot_df = tot_df.loc[tot_df['pop_overture']].sort_values(by='year')
 
 tot_df.loc[:, 'smooth'] = tot_df['rate'].rolling(window=2).mean()
-fig = px.line(tot_df, x='year', y='smooth')
+fig = px.line(tot_df, x='year', y='smooth', hover_name='song_example', hover_data=['artist', 'chart_position'])
 fig.update_yaxes(rangemode='tozero', ticksuffix='%', dtick=20, title='Songs with a Pop Overture')
 fig.update_xaxes(title='Year', range=[1958, 2021])
 
@@ -531,9 +611,12 @@ plot(fig)
 
 df.loc[:, 'pop_overture_txt'] = df['pop_overture'].apply(lambda x: 'w/ Pop Overture' if x else 'No inversion')
 df.loc[:, 'Structure Type'] = df['class']
+df = get_example_song(df)
 
 fig = px.line(df, x='year', y='smooth', color='Structure Type', facet_col='pop_overture_txt', 
-              facet_col_spacing=0.05, color_discrete_map=color_map_dict)
+              facet_col_spacing=0.05, color_discrete_map=color_map_dict, hover_name='song_example', 
+              hover_data=['artist', 'chart_position']
+             )
 fig.update_layout(title='Song beginnings evolution, per year', 
                   yaxis_title='Share of songs',
                   margin_t=120
@@ -673,54 +756,177 @@ fig.update_layout(
 )
 
 plot(fig)
-# + code_folding=[0]
+# + code_folding=[]
 # What comes after/before each element?
-
+array = []
 cols = ['tag_type', 'structure', 'counter', 'type']
 next_df = structure_df\
             .groupby(['tag_type', 'next_structure'], as_index=False)\
             .agg({'song_id':'count'})
 
-next_df.loc[:, 'type'] = 'After'
+next_df.loc[:, 'type'] = '3-After'
 next_df.columns = cols
+array.append(next_df)
 
 prev_df = structure_df\
             .groupby(['tag_type', 'previous_structure'], as_index=False)\
             .agg({'song_id':'count'})
 
-prev_df.loc[:, 'type'] = 'Before'
+prev_df.loc[:, 'type'] = '1-Before'
 prev_df.columns = cols
+array.append(prev_df)
 
-df = pd.concat([next_df, prev_df], axis=0)
+mid_df = prev_df.copy()
+mid_df.loc[:, 'type'] = '2-Middle'
+
+array.append(mid_df)
+
+df = pd.concat(array, axis=0)
 
 df.loc[:, 'total_count'] = df.groupby(['tag_type', 'type'])['counter'].transform('sum')
 df.loc[:, 'percentage'] = 100*df['counter']/df['total_count']
 
 df.loc[:, 'rank'] = df.groupby(['tag_type', 'type'])['percentage'].rank(ascending=False)
 
-df = df.loc[df['rank'] <= 1].sort_values(by='rank')
+df = df.loc[df['rank'] <= 1].sort_values(by=['type', 'rank']).reset_index()
+
+df.loc[df['type'] == '2-Middle', 'percentage'] = 0
+# df.loc[df['type'] == '1-Before', 'percentage'] = -df['percentage']
 
 df.loc[:, 'Structure'] = df['structure'].str.title()
 df.loc[:, 'y_axis'] = df['tag_type'].str.title()
 
-fig = px.bar(df, y='y_axis', color='Structure', x='percentage', 
-             facet_col='type', color_discrete_map=color_map_dict)
 
-# fig.update_yaxes(col=1, categoryorder='category ascending')
-fig.update_xaxes(title='Ocurrence', ticksuffix='%', range=[0,110], dtick=50)
-fig.update_traces(texttemplate='%{x:.1f}%', textposition='outside')
-fig.for_each_annotation(lambda x: x.update(text=x.text.split('=')[1]))
+# Visualization
+fig = make_subplots(rows=1, cols=3, column_widths=[0.48, 0.02, 0.48], 
+                    subplot_titles=("Before", "<b>Element</b>", "After")
+                   )
+
+types = sorted(df['type'].unique().tolist())
+
+df = df.sort_values(by=['y_axis'])
+color_list = df['Structure'].unique().tolist()
+shown = []
+
+# Add bars to viz
+for i in range(0, len(types)):
+    info = df.loc[df['type'] == types[i]].sort_values(by='y_axis')
+    for e in info['Structure'].unique().tolist():
+        bars = info.loc[info['Structure'] == e].sort_values(by='y_axis')
+        
+        if e in shown:
+            fig.add_trace(go.Bar(y=bars['y_axis'], x=bars['percentage'],
+                                orientation='h', name=e, legendgroup=e,
+                                marker_color=color_map_dict[e],
+                                 showlegend=False
+                                ),
+                          row=1, col=i + 1)
+        else:
+            fig.add_trace(go.Bar(y=bars['y_axis'], x=bars['percentage'],
+                    orientation='h', name=e, legendgroup=e,
+                    marker_color=color_map_dict[e],
+                    showlegend=True
+                    ),
+              row=1, col=i + 1) 
+            shown.append(e)
+
+elements = sorted(df['y_axis'].unique().tolist())
+fig.update_yaxes(categoryorder='category descending', row=1)
+
+# Add elements of 
+for e in elements:
+    fig.add_annotation(
+        xref="x",
+        yref="y",
+        showarrow=False,
+        x=0,
+        align="center",
+        y=e,
+        text=e,
+        font_size=14,
+        row=1,
+        col=2
+    )
+    
+
+fig.update_traces(texttemplate='%{x:.1f}%', textposition='outside', col=1)
+fig.update_traces(texttemplate='%{x:.1f}%', textposition='outside', col=3)
+    
+fig.update_yaxes(showticklabels=False)
+fig.update_xaxes(showticklabels=True, ticksuffix='%', dtick=100, title='Occurrence')
+
+fig.update_xaxes(showticklabels=False, col=2, zeroline=False, showgrid=False, title='')
+fig.update_xaxes(col=1, range=[130, 0])
+fig.update_xaxes(col=3, range=[0, 130])
+# fig.update_xaxes(col=1, autorange='reversed', range=[120, 0])
+
+fig.layout.annotations[0].update(y=1.03, font_size=14)
+fig.layout.annotations[1].update(y=1.03, font_size=14)
+fig.layout.annotations[2].update(y=1.03, font_size=14)
 fig.update_layout(
-    title='What comes before and after each song element?',
-    yaxis_title=''
-)
+                  title='Most common structures, before and after each element',
+                  margin_t=120,
+                 )
 
-# fig.update_xaxes(autorange='reversed', row=1, col=1)
-# fig.update_xaxes(autorange=True, row=1, col=2)
-# fig.update_yaxes(showticklabels=False)
+fig.update_layout(legend=dict(
+    yanchor="top",
+    y=1,
+    orientation='v', 
+    title_text='Element',
+    xanchor="left",
+    x=0.95
+))
 
 plot(fig)
 
+
+# + code_folding=[0]
+# # What comes after/before each element?
+
+# cols = ['tag_type', 'structure', 'counter', 'type']
+# next_df = structure_df\
+#             .groupby(['tag_type', 'next_structure'], as_index=False)\
+#             .agg({'song_id':'count'})
+
+# next_df.loc[:, 'type'] = 'After'
+# next_df.columns = cols
+
+# prev_df = structure_df\
+#             .groupby(['tag_type', 'previous_structure'], as_index=False)\
+#             .agg({'song_id':'count'})
+
+# prev_df.loc[:, 'type'] = 'Before'
+# prev_df.columns = cols
+
+# df = pd.concat([next_df, prev_df], axis=0)
+
+# df.loc[:, 'total_count'] = df.groupby(['tag_type', 'type'])['counter'].transform('sum')
+# df.loc[:, 'percentage'] = 100*df['counter']/df['total_count']
+
+# df.loc[:, 'rank'] = df.groupby(['tag_type', 'type'])['percentage'].rank(ascending=False)
+
+# df = df.loc[df['rank'] <= 1].sort_values(by='rank')
+
+# df.loc[:, 'Structure'] = df['structure'].str.title()
+# df.loc[:, 'y_axis'] = df['tag_type'].str.title()
+
+# fig = px.bar(df, y='y_axis', color='Structure', x='percentage', 
+#              facet_col='type', color_discrete_map=color_map_dict)
+
+# # fig.update_yaxes(col=1, categoryorder='category ascending')
+# fig.update_xaxes(title='Ocurrence', ticksuffix='%', range=[0,110], dtick=50)
+# fig.update_traces(texttemplate='%{x:.1f}%', textposition='outside')
+# fig.for_each_annotation(lambda x: x.update(text=x.text.split('=')[1]))
+# fig.update_layout(
+#     title='What comes before and after each song element?',
+#     yaxis_title=''
+# )
+
+# # fig.update_xaxes(autorange='reversed', row=1, col=1)
+# # fig.update_xaxes(autorange=True, row=1, col=2)
+# # fig.update_yaxes(showticklabels=False)
+
+# plot(fig)
 
 # + code_folding=[0]
 # # Position investigation on song, per rank order
@@ -763,7 +969,7 @@ def check_diff(tags_replacer, back_dict, structure, ref):
 
 df = structure_df.copy()
 
-seq_df = df.groupby(['song_id', 'decade'])['tag_type'].apply(list).to_frame().reset_index()
+seq_df = df.groupby(['song_id', 'decade', 'year', 'chart_position'])['tag_type'].apply(list).to_frame().reset_index()
 
 seq_df.loc[:, 'structure'] = seq_df['tag_type'].apply(lambda x: '_'.join(x))
 seq_df.loc[:, 'structure_size'] = seq_df['tag_type'].apply(lambda x: len(x))
@@ -773,7 +979,7 @@ seq_df.loc[:, 'total_songs'] = seq_df.groupby(['decade'])['song_id'].transform('
 
 seq_df.loc[:, 'rank'] = seq_df.groupby(['decade'])['repetition'].rank(ascending=False, method='dense')
 
-most_common_structure = seq_df\
+most_common_dec_structure = seq_df\
                             .loc[seq_df['rank'] == 1]\
                             .drop_duplicates(subset=['decade', 'structure'])\
                             .set_index('decade')['structure'].to_dict()
@@ -790,6 +996,9 @@ seq_df.loc[:, 'diff_to_top'] = seq_df.apply(lambda x: check_diff(tags_replacer, 
 
 seq_df.loc[:, 'distance_to_top'] = seq_df['diff_to_top'].apply(lambda x: len([f for f in x if '+ ' in f or '- ' in f]))
 seq_df.head(1)
+# -
+
+df_elem
 
 # + code_folding=[0]
 # What are the most common song structures of all time? 
@@ -878,6 +1087,11 @@ fig.update_yaxes(autorange='reversed', title='')
 fig.update_xaxes(showticklabels=True, title='Song line', ticksuffix='th', dtick=10)                               
 plot(fig)
 
+df_elem.loc[:, '_year'] = -df_elem['year']
+df_elem.sort_values(by=['chart_position', '_year'])\
+        .drop_duplicates(subset=['structure'])\
+        .loc[:, ['song_id', 'name', 'artist_chart', 'structure']]
+
 # + code_folding=[0]
 # What is the most common song structure of each decade?
 
@@ -934,6 +1148,11 @@ fig.update_layout(
 fig.update_yaxes(title='')
 fig.update_xaxes(showticklabels=True, title='Song line', ticksuffix='th')                               
 plot(fig)
+                               
+                               
+df_elem.sort_values(by=['chart_position', 'year'])\
+        .drop_duplicates(subset=['structure', 'decade'], keep='first')\
+        .loc[:, ['song_id', 'name', 'artist_chart', 'decade', 'structure']]
 
 # + code_folding=[0]
 # Difference from most common structure distribution 
@@ -1121,14 +1340,56 @@ plot(fig)
 # dec_df.loc[:, 'rank'] = dec_df.groupby(['decade'])['song_id'].rank(ascending=False)
 # top_df = dec_df.loc[dec_df['rank'] <= 3]
 # top_df  
+# -
 
 
-# + [markdown] heading_collapsed=true
 # ### Structure cohesion
 
-# + code_folding=[0] hidden=true
+# + code_folding=[0]
 # Data Prep
-reducer = umap.UMAP(n_neighbors=15)
+df = structure_df.copy()
+
+df = df\
+        .groupby(['song_id', 'year', 'tag_type', 'name', 'artist_chart'], as_index=False)\
+        .agg({'lines_on_element':'sum', 'order':'count'})\
+        .sort_values(by='song_id')
+
+df.loc[:, 'total_lines'] = df.groupby(['song_id'])['lines_on_element'].transform('sum')
+df.loc[:, 'percentage'] = df['lines_on_element']/df['total_lines']
+
+song_repr_df = pd.pivot_table(df, index=['song_id', 'year', 'name', 'artist_chart'], columns='tag_type', values='percentage')\
+            .fillna(0).reset_index().sort_index()
+
+# Song structure
+st_df = structure_df\
+        .sort_values(by=['song_id', 'rank'])\
+        .groupby(['song_id'])\
+        ['tag_type'].apply(lambda x: '<br>'.join(x.str.title()))\
+        .to_frame()
+st_df.columns = ['song_structure']
+
+song_repr_df = pd.merge(left=song_repr_df, right=st_df, on='song_id')
+
+
+# Song distance from average representation
+dim_cols = structure_df['tag_type'].unique().tolist()
+
+mean_yearly_repr = song_repr_df.groupby(['year']).agg({c:'mean' for c in dim_cols})
+all_songs_repr = song_repr_df.loc[:, dim_cols].values
+
+songs_dist_df = pd.DataFrame(cdist(all_songs_repr, mean_yearly_repr.values, metric='euclidean'))\
+                        .unstack().to_frame().reset_index()
+
+songs_dist_df.columns = ['year_index', 'song_index', 'distance']
+songs_dist_df.loc[:, 'year'] = songs_dist_df['year_index'].apply(lambda x: mean_yearly_repr.index.tolist()[x])
+songs_dist_df.loc[:, 'song_id'] = songs_dist_df['song_index'].apply(lambda x: song_repr_df['song_id'].tolist()[x])
+songs_dist_df.head()
+
+# + code_folding=[0]
+# View song structure similarity 
+
+# Data Prep
+reducer = umap.UMAP(n_neighbors=10)
 umap_df = pd.DataFrame(reducer.fit_transform(song_repr_df.loc[:, dim_cols].values))
 umap_df.columns = ['dim0', 'dim1']
 
@@ -1137,8 +1398,6 @@ umap_df = pd.concat([umap_df, song_repr_df.loc[:, ['song_id', 'name', 'year', 'a
 
 umap_df.loc[:, 'Decade'] = (10*np.floor(umap_df['year']/10)).astype(int).astype(str)
 
-# + code_folding=[0] hidden=true
-# View song structure similarity 
 fig = px.scatter(umap_df, x='dim0', y='dim1', color='Decade', hover_name='name', 
                  hover_data=['artist_chart', 'year', 'song_structure'],
                  color_discrete_sequence=px.colors.sequential.Agsunset)
@@ -1151,7 +1410,7 @@ fig.update_traces(marker_opacity=0.8)
 
 plot(fig)
 
-# + code_folding=[0] hidden=true
+# + code_folding=[0]
 # Song structure cohesion per year
 df = songs_dist_df\
         .groupby(['year'], as_index=False)\
@@ -1159,6 +1418,7 @@ df = songs_dist_df\
 
 fig = px.line(df, x='year', y='distance')
 fig.update_layout(title='Structure cohesion, per year')
+fig.update_yaxes(rangemode='tozero')
 plot(fig)
 
 
@@ -1174,48 +1434,180 @@ plot(fig)
 # fig = px.line(df, x='year_disc', y='distance')
 # fig.update_layout(title='Structure conformity, per year')
 # plot(fig)
+
+# + code_folding=[0]
+# Song structure diversity evolution 
+df = seq_df.copy()
+
+df = df\
+        .groupby(['year'], as_index=False)\
+        .agg({'structure':'nunique', 'distance_to_top':'mean', 'song_id':'nunique'})
+
+df.loc[:, 'structures_per_song'] = df['structure']/df['song_id']
+
+fig = px.line(df, x='year', y=['structures_per_song', 'distance_to_top'], 
+              facet_col='variable', facet_col_spacing=0.1)
+
+title_dict = {'structures_per_song':'Unique song structures, per songs on year', 
+              'distance_to_top':'Average distance from most used structure, per year'}
+fig.update_yaxes(matches=None, showticklabels=True, rangemode='tozero', title='')
+fig.update_xaxes(title='Year')
+fig.for_each_annotation(lambda x: x.update(text = title_dict[x.text.split('=')[1]]))
+
+fig.update_layout(
+    title='Evolution of song structure diversity',
+    showlegend=False,
+    margin_t=120
+)
+
+plot(fig)
 # -
 
 # ## Sructure X Success 
 
-# Ideas
-#
-# * Structure x Success 
-#
-# * Examples of strucutre, and exceptions
-#
-# * Lolipop graph to before and after
-#
-# * Sentiment Analysis on Structure
-
 # + code_folding=[0]
-# Specific elements change in words and importance to songs, over time
+##### Is there a difference from chart toppers and the rest of the songs regarding song structure?
+df = structure_df.copy()
 
-df = structure_df\
-        .groupby(['song_id', 'year', 'tag_type'], as_index=False)\
-        .agg({'words_on_element':'sum', 'lines_on_element':'sum', 'lines_on_lyrics':'mean'})
+cut = 20
+df.loc[:, 'chart_topper'] = df['chart_position'] <= cut
+df.loc[:, 'type_count'] = df.groupby(['chart_topper'])['song_id'].transform('nunique')
 
-df.loc[:, 'total_words'] = df.groupby(['song_id'])['words_on_element'].transform('sum').fillna(0)
-df.loc[:, 'relevance_on_song'] = 100*(df['words_on_element']/df['total_words'])
 
 df = df\
-        .groupby(['tag_type', 'year'], as_index=False)\
-        .agg({'words_on_element':'median', 'relevance_on_song':'median'})
+        .groupby(['song_id', 'year', 'decade', 'tag_type', 'lines_on_lyrics', 'chart_topper', 'type_count'], as_index=False)\
+        .agg({'name':'count', 'lines_on_element':'sum'})\
+        .rename(columns={'name':'counter'})
 
-df
-# fig = px.line(df.sort_values(by='year'), x='year', y=['words_on_element'], 
-#               facet_col='tag_type', color='tag_type', facet_col_wrap=4, facet_col_spacing=0.05)
+df.loc[:, 'importance_on_song'] = 100*df['lines_on_element']/df['lines_on_lyrics']
 
-# fig.update_yaxes(matches=None, showticklabels=True, rangemode='tozero')
-# fig.update_layout(showlegend=False, height=800)
+df = df\
+        .groupby(['tag_type', 'chart_topper', 'type_count'], as_index=False)\
+        .agg({'song_id':'nunique', 'counter':'mean', 'importance_on_song':'mean'})
 
-# plot(fig)
+df.loc[:, 'percentage'] = 100*df['song_id']/df['type_count']
+df.loc[:, 'y_text'] = df['tag_type'].str.title()
+
+color_col = f"Top{cut}"
+df.loc[:, color_col] = df['chart_topper']
+
+# 
+palette = px.colors.qualitative.Vivid
+color_map = {True:palette[5], False:palette[-1]}
+
+fig = px.bar(df, y='y_text', x=['percentage', 'counter', 'importance_on_song'], barmode='group',
+             color=color_col, facet_col='variable', color_discrete_map=color_map)
+
+facet_title = {
+    'percentage':'Songs that use element',
+    'counter':'Amount of elements used',
+    'importance_on_song':'Share of lines on element'
+}
+fig.for_each_annotation(lambda a: a.update(text=facet_title[a.text.split('=')[1]]))
+
+fig.update_xaxes(matches=None, title='')
+fig.update_xaxes(range=[0, 120], col=1, dtick=100, ticksuffix='%')
+fig.update_xaxes(range=[0, 4], col=2, dtick=3)
+fig.update_xaxes(range=[0, 45], col=3, dtick=40, ticksuffix='%')
+
+fig.update_traces(textposition='outside', texttemplate='%{x:.1f}%')
+fig.update_traces(texttemplate='%{x:.1f}', col=2)
+fig.update_layout(
+    height=600,
+    title='Is there a structural difference between the Top 20 and the rest of the songs?',
+    margin_t=120
+)
+                  
+fig.update_yaxes(categoryorder='total ascending', col=1, title='')
+
+plot(fig)
 
 
-# fig = px.line(df.sort_values(by='year'), x='year', y=['relevance_on_song'], 
-#               facet_col='tag_type', color='tag_type', facet_col_wrap=4, facet_col_spacing=0.05)
+# -
 
-# fig.update_yaxes(showticklabels=False, rangemode='tozero', title='')
-# fig.update_layout(showlegend=False, height=800)
-# fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[1].replace('_', ' ').title()))
-# plot(fig)
+# ## Song structure visualization
+
+# + code_folding=[0, 18]
+def split_lyrics_lines(song_id):
+    df = structure_df.loc[structure_df['song_id'] == song_id].copy()
+    df.loc[:, 'lyrics_lines'] = df['section_lyrics'].apply(lambda x: [f for f in x.split('\n')])
+    line_df = pd.DataFrame.explode(df, column='lyrics_lines')
+    line_df.loc[:, 'last_line'] = line_df['lyrics_lines'].shift(1)
+    
+    line_df.loc[:, 'pos'] = 1
+    line_df.loc[:, 'pos'] = line_df['pos'].cumsum()
+
+    marker_value = {'intro':1, 'verse':2, 'pre-chorus':3, 'chorus':4, 
+          'post-chorus':3, 'hook':4, 'refrain':4, 'bridge':3, 'solo':1, 'break':1, 
+          'outro':1, 'interlude':1, 'outro':1}
+    line_df.loc[:, 'value'] = line_df['tag_type'].apply(lambda x: marker_value[x])
+    line_df.loc[:, 'size'] = 1
+    
+    return line_df
+    
+
+def print_lyrics_scatter(song_id):
+
+    line_df = split_lyrics_lines(song_id)
+    
+    breaker = int(np.ceil(line_df['pos'].max()/2)) + 1
+    line_df.loc[:, 'break'] = (np.floor(line_df['pos']/breaker)*breaker).astype(int)
+    
+    color_col = 'Song Element'
+    line_df.loc[:, color_col] = line_df['tag_type'].str.title()
+    
+
+    fig = px.scatter(line_df, y='pos', x='value', text='lyrics_lines', 
+                     size='size', size_max=8,
+                     facet_col='break', facet_col_spacing=0.01, color=color_col,
+                     color_discrete_map=color_map_dict
+                    )
+    fig.update_traces(textposition='middle right', textfont_size=12)
+    break_list = sorted(line_df['break'].unique().tolist())
+    break_list_text = {} 
+    for b in break_list:
+        if break_list.index(b) == 0:
+            break_list_text[str(b)] = 'Start'
+        elif break_list.index(b) < len(break_list):
+            break_list_text[str(b)] = '...'
+        else:
+            break_list_text[str(b)] = 'End'
+
+    fig.update_yaxes(matches=None, showticklabels=False, zeroline=False, showgrid=False, title='')
+    fig.update_xaxes(range=[0, 50], showticklabels=False, showgrid=False, 
+                     title='')
+    for i in range(0, len(break_list)):
+        df = line_df.loc[line_df['break'] == break_list[i]]
+        range_y = [df['pos'].min() + breaker + 1, df['pos'].min()-1]
+        fig.update_yaxes(col=i+1, range=range_y)
+        if len(break_list) == 0:
+            fig.update_xaxes(col=i, title='End')
+        else:
+            if i < len(break_list) - 1:     
+                fig.update_xaxes(col=i+1, title='...')
+            else:
+                fig.update_xaxes(col=i+1, title='End')
+                
+    stretcher = (breaker//5)
+    fig.update_layout(
+        height=max([100*stretcher, 600]),
+        margin_l=20,
+        margin_r=20,
+        margin_t=120,
+        legend_orientation='h',
+        title=f"<b>{line_df['name'].unique().tolist()[0]}</b><br><i>by {line_df['artist_chart'].unique().tolist()[0]}</i>",
+        titlefont_size=18
+    )
+    fig.update_xaxes(titlefont_size=16)
+    
+    fig.for_each_annotation(lambda x: x.update(text=break_list_text[x.text.split('=')[1]], font_size=16))
+    
+    plot(fig)
+    
+print_lyrics_scatter('2020_3')
+# -
+
+# ## Next Ideas
+#
+# * Artist highlights
+# * Songs highlights
