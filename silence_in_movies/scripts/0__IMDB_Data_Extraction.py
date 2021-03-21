@@ -15,27 +15,22 @@
 # # Setup
 
 # +
-# import json
 import imdb
 import pandas as pd
-# import os 
-# import time
-# import numpy as np
-# from pyYify import yify
 from pathlib import Path
-# import aria2p
-# from ast import literal_eval
-# import plotly.express as px
+import plotly.express as px
+import numpy as np
 
 data_path = Path('./data')
-# -
 
+# + [markdown] heading_collapsed=true
 # # IMDB top 250 list
 
+# + hidden=true
 ia = imdb.IMDb()
 top = ia.get_top250_movies()
 
-# +
+# + hidden=true
 movies_info = []
 
 for i in range(0, len(top)):
@@ -67,5 +62,33 @@ imdb_top_250_df.loc[:, 'imdb_id'] = 'tt' + imdb_top_250_df['imdb_code']
 
 imdb_top_250_df.head(3)
 
+# + hidden=true
+imdb_top_250_df.to_csv(data_path/'imdb_top250_movies.csv', index=False)
+# -
+
+# # Analysis
+
+imdb_top_250_df = pd.read_csv(data_path/'imdb_top250_movies.csv')
+imdb_top_250_df.head(1)
+
+px.histogram(imdb_top_250_df, x='year')
+
 # +
-# imdb_top_250_df.to_csv(data_path/'imdb_top250_movies.csv', index=False)
+df = imdb_top_250_df.copy()
+df.loc[:, 'batch'] = np.floor(df['year']/5)*5
+
+df = df.groupby('batch', as_index=False).agg({'title':'count'})
+px.bar(df, x='batch', y='title')
+# -
+
+import math
+
+df = imdb_top_250_df.copy()
+min_year = int(df['year'].min())
+df.loc[:, 'batch'] = pd.qcut(df['year'], 25, duplicates='raise')
+df.loc[:, 'batch'] = df['batch'].apply(lambda x: f"{math.floor(x.left) + 1:.0f}_{math.floor(x.right):.0f}" if x.left != min_year else f"{min_year:.0f}_{x.right:.0f}")
+df['batch'].value_counts().sort_index()
+
+df.to_csv(data_path/'imdb_top250_movies.csv', index=False)
+
+
