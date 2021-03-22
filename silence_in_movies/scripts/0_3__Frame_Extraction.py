@@ -32,6 +32,8 @@ movies_features_to_extract = get_movies_status(movies_raw_path, movies_prep_path
 movies_to_extract = [movies_raw_path/k for k, v in movies_features_to_extract.items() if 'images' in v]
 # -
 
+movies_to_extract
+
 # Loop through movie files, save their audio on folder prep
 for m in movies_to_extract:
 
@@ -62,3 +64,5 @@ for m in movies_to_extract:
         if success:
             cv2.imwrite( pathOut + "/frame_%d.jpg" % timer, image)     # save frame as JPEG file
             count = count + 1
+
+

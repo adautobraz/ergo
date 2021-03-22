@@ -22,13 +22,13 @@ def get_movie_file_dict(raw_path):
         # Get mp4/mkv files
     movie_files = {}
 
-    downloaded_movies = find_downloaded_movies(raw_path)
-
+    downloaded_movies = find_downloaded_movies(raw_path)            
     for m in downloaded_movies:
         movie_id = str(m).split('/')[-1]
         ref_folder = [f for f in os.listdir(m) if not f.startswith('.')]
         torrent_folder = m/(ref_folder[0])
-        movie_file = [f for f in os.listdir(torrent_folder) if f.endswith('.mkv') or f.endswith('.mp4')][0]
+        movie_file = [f for f in os.listdir(torrent_folder) if f.endswith('.mkv') 
+                        or f.endswith('.mp4') or f.endswith('.m4v') or f.endswith('.avi')][0]
         movie_files[movie_id] = torrent_folder/movie_file
         
     return movie_files

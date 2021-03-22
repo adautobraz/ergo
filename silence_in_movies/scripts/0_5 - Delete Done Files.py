@@ -28,6 +28,7 @@ import shutil
 from mutagen.mp3 import MP3
 import numpy as np
 import json
+from IPython.display import display
 
 from sources.common_functions import *
 
@@ -44,32 +45,36 @@ movies_folders = [f for f in os.listdir(movies_raw_path) if '.' not in f]
 # Find all downloaded movies
 downloaded = find_downloaded_movies(movies_raw_path)
 
-# +
-# torrent_names = {}
-# for d in downloaded:
-#     movie_id = str(d).split('/')[-1]
-#     torrent_names[movie_id] = [f for f in os.listdir(d) if not f.startswith('.')][0]
-#     aux_dict = {movie_id: torrent_names[movie_id]}
+torrent_names = {}
+for d in downloaded:
+    movie_id = str(d).split('/')[-1]
+    torrent_names[movie_id] = [f for f in os.listdir(d) if not f.startswith('.')][0]
+    aux_dict = {movie_id: torrent_names[movie_id]}
     
-#     with open(movies_prep_path/movie_id/'torrent_info.json', 'w') as w:
-#         json.dump(aux_dict, w)
-# -
+    Path(movies_prep_path/movie_id).mkdir(parents=True, exist_ok=True)
+    
+    with open(movies_prep_path/movie_id/'torrent_info.json', 'w') as w:
+        json.dump(aux_dict, w)
 
-if torrent_names:  
-    match_df = imdb_df.loc[imdb_df['imdb_id'].isin(torrent_names.keys()), ['imdb_id', 'title', 'year', 'top_250_rank']]
-    match_df.loc[:, 'file_downloaded'] = match_df['imdb_id'].apply(lambda x: torrent_names[x])
-    match_df.loc[:, 'file_adj'] = match_df['file_downloaded'].apply(lambda x: re.sub(r"(\[.*\])|(\(.*\))", r"", x))
-    match_df.loc[:, 'year_file'] = match_df['file_downloaded'].apply(lambda x: int(re.findall(r"(\(.*\))", x)[-1][1:-1]))
+# +
+# if torrent_names:  
+match_df = imdb_df.loc[imdb_df['imdb_id'].isin(torrent_names.keys()), ['imdb_id', 'title', 'year', 'top_250_rank']]
+match_df.loc[:, 'file_downloaded'] = match_df['imdb_id'].apply(lambda x: torrent_names[x])
+match_df.loc[:, 'file_adj'] = match_df['file_downloaded'].apply(lambda x: re.sub(r"(\[.*\])|(\(.*\))", r"", x))
+match_df.loc[:, 'year_file'] = match_df['file_downloaded'].apply(lambda x: re.findall(r"[\. \(]([0-9]*)[\. \)]", x)[-1]).astype(int)
 
-    match_df.loc[:, 'match'] = match_df.apply(lambda x: fuzz.partial_ratio(x['file_adj'], x['title']), axis=1)
-    match_df.head(1)
+match_df.loc[:, 'match'] = match_df.apply(lambda x: fuzz.partial_ratio(x['file_adj'], x['title']), axis=1)
+match_df.head(1)
 
 
 # +
-# # Check movies that don't match 
+# # # Check movies that don't match 
 
-# wrong_movies = match_df.loc[match_df['year_file'] != match_df['year']]['imdb_id'].tolist()
-# print(wrong_movies)
+wrong_movies = match_df.loc[match_df['year_file'] != match_df['year']]['imdb_id'].tolist()
+print(wrong_movies)
+
+display(match_df.loc[match_df['imdb_id'].isin(wrong_movies)])
+match_df.sort_values(by=['match'])
 
 # if wrong_movies:
 
@@ -87,7 +92,7 @@ movie_status = get_movies_status(movies_raw_path, movies_prep_path)
 
 done_ids = [k for k,v in movie_status.items() if len(v) == 0]
 not_done = {k:v for k,v in movie_status.items() if len(v) > 0}
-not_done
+done_ids
 
 # +
 # For done files, remove their raw files
@@ -97,5 +102,11 @@ for d in done_ids:
     print(folder)
     shutil.rmtree(folder)
 # -
+movies_prep_path = data_path/'movies_prep'
+downloaded = [f for f in os.listdir(movies_prep_path) if not f.startswith('.')]
+
+top_df = imdb_df.loc[imdb_df['top_250_rank'] <= 100]\
+            .loc[~imdb_df['imdb_id'].isin(downloaded)]
+top_df.shape
 
 

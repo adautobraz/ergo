@@ -109,14 +109,13 @@ torrent_info_df.head(1)
 
 # + hidden=true
 torrent_info_df.to_csv(data_path/'yify_torrents.csv', index=False)
+# -
 
-# + [markdown] heading_collapsed=true
 # ## The Pirate Bay
 
-# + hidden=true
 tpb = TPB()
 
-# + hidden=true
+# +
 i = 0
 
 chosen_torrents = []
@@ -144,26 +143,27 @@ for movie_id, movie_infos in movie_dict.items():
     
     i += 1
 
-# + hidden=true
+# +
 tpb_df = pd.concat(options)
 tpb_df.columns = ['imdb_id', 'title', 'byte_size', 'seeds', 'magnet']
 
 tpb_df.loc[:, 'has_no_seeds'] = tpb_df['seeds'] < 2
+tpb_df.loc[:, 'byte_neg'] = -tpb_df['byte_size']
 
 tpb_df = tpb_df\
-            .sort_values(by=['has_no_seeds', 'byte_size'])\
+            .loc[tpb_df['byte_size']/(10**9) < 2]\
+            .sort_values(by=['seeds', 'byte_neg'], ascending=False)\
             .drop_duplicates(subset=['imdb_id'], keep='first')
 
 tpb_df.head()
-
-# + hidden=true
-tpb_df.to_csv(data_path/'the_pirate_bay_torrents.csv', index=False)
 # -
+
+tpb_df.to_csv(data_path/'the_pirate_bay_torrents.csv', index=False)
 
 # # Batch Torrents
 
-yify_df = pd.read_csv(data_path/'yify_torrents.csv').sort_values(by='imdb_id')
-tpb_df = pd.read_csv(data_path/'the_pirate_bay_torrents.csv').sort_values(by='imdb_id')
+yify_raw_df = pd.read_csv(data_path/'yify_torrents.csv').sort_values(by='imdb_id')
+tpb_raw_df = pd.read_csv(data_path/'the_pirate_bay_torrents.csv').sort_values(by='imdb_id')
 imdb_df = pd.read_csv(data_path/'imdb_top250_movies.csv')
 
 # +
@@ -175,13 +175,14 @@ for f in os.listdir(data_path/'download_again'):
 
 yify_problem = pd.concat(array)['imdb_id'].unique().tolist()
 
-yify_df = yify_df.loc[~yify_df['imdb_id'].isin(yify_problem)]
-tpb_df = tpb_df.loc[tpb_df['imdb_id'].isin(yify_problem)]
+yify_df = yify_raw_df.loc[~yify_raw_df['imdb_id'].isin(yify_problem)]
+tpb_df = tpb_raw_df.loc[tpb_raw_df['imdb_id'].isin(yify_problem)]
 
 torrents_df = pd.concat([yify_df, tpb_df], axis=0).loc[:, ['magnet', 'imdb_id']]
+torrents_df = tpb_raw_df
 
 # Join information
-df = imdb_df.loc[:, ['imdb_id', 'batch', 'year']]
+df = imdb_df.loc[:, ['imdb_id', 'batch', 'year', 'top_250_rank']]
 
 torrent_info_df = pd.merge(left=torrents_df, right=df, on='imdb_id', how='left').sort_values(by='year', ascending=False)
 
@@ -217,15 +218,22 @@ for m in file_ids:
         for f in files_in_folder:
             if '.aria2' in f:
                 complete = False
+                print(m)
+                print(imdb_df.loc[imdb_df['imdb_id'] == m, ['title', 'year', 'imdb_id']])
         if complete:
             downloaded.append(m)
 
 do_not_download = downloaded + prep_movies
 len(do_not_download)
 
-# + code_folding=[]
-not_downloaded_df = torrent_info_df.loc[~torrent_info_df['imdb_id'].isin(do_not_download)].sample(frac=1.0)
+# +
+not_downloaded_df = torrent_info_df\
+                        .loc[torrent_info_df['top_250_rank'] <= 100]\
+                        .loc[~torrent_info_df['imdb_id'].isin(do_not_download)].sample(frac=1.0)
 
+not_downloaded_df.shape
+
+# + code_folding=[]
 shutil.rmtree(str(batch_folder))
 Path(batch_folder).mkdir(parents=True, exist_ok=True)
 
@@ -260,6 +268,3 @@ for i in range(0, not_downloaded_df.shape[0], step):
 #     for i in ids:
 #         if len(os.listdir(folder/i)) == 0:
 #             shutil.rmtree(folder/i) # If so, delete it
-# -
-
-
