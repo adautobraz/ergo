@@ -61,10 +61,10 @@ for d in downloaded:
 match_df = imdb_df.loc[imdb_df['imdb_id'].isin(torrent_names.keys()), ['imdb_id', 'title', 'year', 'top_250_rank']]
 match_df.loc[:, 'file_downloaded'] = match_df['imdb_id'].apply(lambda x: torrent_names[x])
 match_df.loc[:, 'file_adj'] = match_df['file_downloaded'].apply(lambda x: re.sub(r"(\[.*\])|(\(.*\))", r"", x))
-match_df.loc[:, 'year_file'] = match_df['file_downloaded'].apply(lambda x: re.findall(r"[\. \(]([0-9]*)[\. \)]", x)[-1]).astype(int)
+match_df.loc[:, 'year_file'] = match_df['file_downloaded'].apply(lambda x: re.findall(r"[\. \(]*([0-9]{4})[\. \)]*", x)[0]).astype(int)
 
 match_df.loc[:, 'match'] = match_df.apply(lambda x: fuzz.partial_ratio(x['file_adj'], x['title']), axis=1)
-match_df.head(1)
+match_df.head(20)
 
 
 # +
@@ -74,7 +74,7 @@ wrong_movies = match_df.loc[match_df['year_file'] != match_df['year']]['imdb_id'
 print(wrong_movies)
 
 display(match_df.loc[match_df['imdb_id'].isin(wrong_movies)])
-match_df.sort_values(by=['match'])
+# match_df.sort_values(by=['match'])
 
 # if wrong_movies:
 
@@ -105,8 +105,8 @@ for d in done_ids:
 movies_prep_path = data_path/'movies_prep'
 downloaded = [f for f in os.listdir(movies_prep_path) if not f.startswith('.')]
 
-top_df = imdb_df.loc[imdb_df['top_250_rank'] <= 100]\
+top_df = imdb_df.loc[imdb_df['top_250_rank'] <= 150]\
             .loc[~imdb_df['imdb_id'].isin(downloaded)]
-top_df.shape
+top_df.head()
 
 

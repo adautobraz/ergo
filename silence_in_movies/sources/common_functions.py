@@ -68,8 +68,10 @@ def get_movies_status(raw_path, prep_path):
             movie_status[movie_id].append('images')
         else:
             expected_frames = movie_duration//10
-            found_frames = len(os.listdir(prep_folder/'images/')) 
+            found_frames = len(os.listdir(prep_folder/'images/'))
             if abs(expected_frames - found_frames) > 10:
+                print(expected_frames)
+                print(found_frames)
                 movie_status[movie_id].append('images')
 
     return movie_status

@@ -109,7 +109,11 @@ for m in movie_ids:
 
 # ## Movie info 
 
+# +
 imdb_df = pd.read_csv(data_path/'imdb_top250_movies.csv')
+
+imdb_df = imdb_df.loc[imdb_df['top_250_rank'] <= 150]
+
 movie_info_df = imdb_df.loc[:, ['imdb_id', 'title', 'year', 'rating', 'genres', 'top_250_rank','color_info']]
 # movie_info_df.loc[:, 'genres'] = movie_info_df['genres'].apply(lambda x: eval(x))
 # movie_info_df.loc[:, 'color_info'] = movie_info_df['color_info'].apply(lambda x: eval(x))
@@ -164,16 +168,62 @@ movies_df.head()
 
 movies_df.to_csv(data_path/'prep/movies_infos.csv', index=False)
 
-movies_df['imdb_id'].nunique()
+imdb_df.loc[~imdb_df['imdb_id'].isin(subs_df['imdb_id'])]
 
 main_palette = px.colors.qualitative.Safe
 
+
+def vectorize_column(raw_df, col):
+    df = raw_df.copy()
+    df.loc[:, col] = df[col].apply(lambda x: eval(x))
+    return df
+
+
 # # Analysis
 
-# + [markdown] heading_collapsed=true
+# ## All Sounds
+
+# +
+df = movies_df.copy()
+fig = px.violin(df, x = ['silence_dur', 'dialogue_dur', 'other_dur'], y='variable', 
+                color='variable', color_discrete_sequence=main_palette)
+
+fig.update_traces(orientation='h', side='positive', width=1,
+                  points=False, spanmode='hard', meanline_visible=True)
+
+fig.update_xaxes(ticksuffix='%', title='Percentage of movie', dtick=100, range=[-1,101])
+fig.update_yaxes(showgrid=True)
+fig.update_layout(title='What composes the sound of movies?', showlegend=False)
+
+plot(fig)
+
+# + code_folding=[0]
+# Sound composition
+df = movies_df.copy()
+
+df.loc[:, 'decade'] = (np.floor(df['year']/20)*20).astype(int)
+df.loc[:, 'decade'] = df['decade'].apply(lambda x: f"{x} - {x+19}")
+
+fig = px.strip(df.sort_values(by='decade'), y=['silence_dur', 'dialogue_dur', 'other_dur'],
+               facet_col='decade', color_discrete_sequence=main_palette, color='variable',
+               hover_name='title', hover_data=['year', 'top_250_rank'])
+
+fig.update_yaxes(dtick=50, range=[0,110], ticksuffix='%')
+fig.update_xaxes(title='', showticklabels=False)
+
+fig.update_layout(
+    title = 'By which type of sound each movie is composed?', 
+    showlegend=True, 
+    margin_t=120,
+    legend_title='Type of sound',
+    yaxis_title='')
+
+fig = facet_prettify(fig)
+plot(fig)
+# -
 # ## Silences
 
-# + code_folding=[0] hidden=true
+# + code_folding=[]
 # Duration of each silence
 df = silences_df.copy()
 
@@ -184,7 +234,11 @@ fig.update_yaxes(ticksuffix='%', title='Percentage of occurrences')
 fig.update_layout(title='How long are silence parts on movies?')
 plot(fig)
 
-# + code_folding=[0] hidden=true
+df = silences_df.copy()
+
+display(df.sort_values(by=['duration'], ascending=False).head(5))
+
+# + code_folding=[0]
 # Where do the silences occur?
 
 
@@ -225,7 +279,7 @@ df.loc[:, 'not_peak'] = True
 peaks = list(find_peaks(df['median'])[0])
 df.loc[df.index.isin(peaks), 'not_peak'] = False
 
-top_values = df.sort_values(by=['not_peak', 'rank']).iloc[:3]['position_disc'].tolist()
+top_values = df.sort_values(by=['not_peak', 'rank']).iloc[:2]['position_disc'].tolist()
 top_values.append(100)
 
 fig = px.line(df, x='position_disc', y=['median'], line_shape='linear', 
@@ -242,7 +296,7 @@ plot(fig)
 
 
 
-# + code_folding=[0] hidden=true
+# + code_folding=[0]
 # How many silence events, and for how long?
 df = silences_df\
         .groupby(['imdb_id'], as_index=False)\
@@ -263,7 +317,7 @@ fig.update_layout(title='How much of each movie is made of silence?')
 
 plot(fig)
 
-# + code_folding=[0] hidden=true
+# + code_folding=[0]
 # How many silence events, and for how long?
 df = silences_df\
         .groupby(['imdb_id', 'genres', 'total_duration'], as_index=False)\
@@ -304,8 +358,8 @@ aux_dict = {'dur_rel': 'Average share of silence on movie genre<br> ', 'silences
 
 fig.for_each_annotation(lambda a: a.update(text = aux_dict[a.text.split('=')[1]]))
 fig.update_xaxes(title='')
-fig.update_xaxes(col=1, range=[-0.5, 46], tickvals=[0,45], ticksuffix='%')
-fig.update_xaxes(col=2, range=[0, 460], tickvals=[0,450])
+fig.update_xaxes(col=1, range=[-0.5, 31], tickvals=[0,30], ticksuffix='%')
+fig.update_xaxes(col=2, range=[0, 301], tickvals=[0,300])
 fig.update_traces(texttemplate='%{x:.3s}', textposition='outside')
 fig.update_traces(texttemplate='%{x:.3s}%', col=1)
 
@@ -322,19 +376,12 @@ fig.update_layout(
 
 plot(fig)
 
-
-# + hidden=true
-def vectorize_column(raw_df, col):
-    df = raw_df.copy()
-    df.loc[:, col] = df[col].apply(lambda x: eval(x))
-    return df
-
-# + code_folding=[0] hidden=true
+# + code_folding=[0]
 # Where do the silences occur?
-
-
+h = 230
+grey = f"rgb({h},{h},{h})"
 # Test 2: Line
-smooth = 10
+smooth = 5
 df = silences_df.copy()
 df.loc[:, 'position_disc'] = np.ceil(df['pos_rel']/smooth)*smooth
 
@@ -350,69 +397,157 @@ df = df.groupby(['position_disc', 'genres'])\
         .agg({'dur_rel':['median', 'mean'], 'imdb_id':'nunique'}).droplevel(0, axis=1)\
         .reset_index()
 
-# df.loc[:, 'roll'] = df.sort_values(by='position_disc')['median'].rolling(10, center=True).mean()
-# df.loc[:, 'rank'] = df['median'].rank(ascending=False).astype(int)
-aux = df.groupby(['genres'], as_index=False).agg({'nunique':'max'})
-aux.loc[:, 'text'] = aux.apply(lambda x: f"<b>{x['genres']}</b> ({x['nunique']})", axis=1)
-aux_dict = aux.set_index('genres')['text'].to_dict()
-                               
-category_orders = {'genres':aux.sort_values(by='nunique', ascending=False)['genres'].tolist()}
-                            
-                                                               
-fig = px.line(df, x='position_disc', y='mean', line_shape='linear', facet_col_spacing=0.05,
-              facet_col='genres', color_discrete_sequence=main_palette, category_orders = category_orders,
-              facet_col_wrap=5)
-fig.update_xaxes(ticksuffix='%', dtick=50, range=[0, 101], color='grey', title='')
-fig.update_xaxes(title='Position on movie', row=1, titlefont_color='black', col=3)
+all_dfs = []
+for g in df['genres'].unique().tolist():
+    h_df = df.copy()
+    h_df.loc[:, 'animation_group'] = g
+    h_df.loc[:, 'is_highlight'] = h_df['genres'] == g
+    all_dfs.append(h_df)
+    
+highlight_df = pd.concat(all_dfs, axis=0).sort_values(by=['animation_group', 'is_highlight'])
+highlight_df.loc[:, 'Genre highlighted'] = highlight_df['animation_group'].apply(lambda x: f"<b>{x}</b>")
+highlight_df.loc[:, 'Genre'] = highlight_df['genres']
 
-fig.update_yaxes(rangemode='tozero', showgrid=False, title='', dtick=1, color='grey')
-fig.update_yaxes(ticksuffix='%')
-# fig.update_yaxes(col=1, ticksuffix='%')
+fig = px.line(highlight_df, x='position_disc', y='mean', color='is_highlight', animation_frame='Genre highlighted',
+              color_discrete_map={True:main_palette[1], False:grey},
+              line_group='Genre')
 
-, title='Level of Silence', row=3
-fig.for_each_annotation(lambda x: x.update(text=aux_dict[x.text.split('=')[1]]))
+fig.update_traces(patch={"line":{"width":3}}, 
+                  selector={"name":"True"})
+
 fig.update_layout(
-    title='Which part of a movie is the quietest?',
+    title='At which part the movie is the quietest? (View per genre)',
+    yaxis_title='Silence relevance',
+    yaxis_dtick=1,
+    yaxis_ticksuffix='%',
+    xaxis_title='Position of movie',
+    xaxis_ticksuffix='%',    
     showlegend=False,
-    height=800
+    xaxis_dtick=25
 )
+
 plot(fig)
 
+# + code_folding=[0]
+# Where do the silences happen?
+smooth = 0.5
+df = silences_df.copy()
+df.loc[:, 'position_disc'] = np.ceil(df['pos_rel']/smooth)*smooth
 
-
-
-# + code_folding=[0] hidden=true
-# Scatter movie relationship year x rating x silence
-df = silences_df\
-        .groupby(['imdb_id', 'year', 'genres', 'rating', 'top_250_rank', 'title'], as_index=False)\
-        .agg({'dur_rel':'sum'})
-
+df = df\
+        .groupby(['imdb_id', 'position_disc', 'genres'], as_index=False)\
+        .agg({'dur_rel':'sum', 'silence_id':'count'})
+        
 df = vectorize_column(df, 'genres')
 
-fig = px.scatter(df, x='year', y='dur_rel', hover_name='title')
+df = pd.DataFrame.explode(df, column='genres')
+
+df = df\
+        .groupby(['position_disc', 'genres'], as_index=False).agg({'dur_rel':'mean'})
+
+df.loc[:, 'x_start'] = df['position_disc']
+df.loc[:, 'x_end'] = df['x_start'] + df['dur_rel']
+df.loc[df['x_end'] > 100, 'x_end'] = 100
+
+df.loc[: , 'total_dur'] = df.groupby(['genres'])['dur_rel'].transform('sum')
+df.loc[:, 'rank'] = df['total_dur'].rank(ascending=True, method='dense')
+
+df = df.sort_values(by='rank')
+
+fig = px.timeline(df, y='genres', x_start='x_start', x_end='x_end', color_discrete_sequence=main_palette[1:])
+
+fig.layout.xaxis.type = 'linear'
+fig.data[0].x = df['dur_rel'].tolist()
+
+fig.update_xaxes(range=[-1, 100], ticksuffix='%')
+fig.update_yaxes(title='')
+
+fig.update_layout(title='At what part the movie is the quietest?')
+
 plot(fig)
 
+# + code_folding=[0]
+# # Where do the silences occur?
 
-fig = px.box(df, x='rating', y='dur_rel', hover_name='title', points=False)
-plot(fig)
+
+# # Test 2: Line
+# smooth = 10
+# df = silences_df.copy()
+# df.loc[:, 'position_disc'] = np.ceil(df['pos_rel']/smooth)*smooth
+
+# df = df\
+#         .groupby(['imdb_id', 'position_disc', 'genres'], as_index=False)\
+#         .agg({'dur_rel':'sum', 'silence_id':'count'})
+        
+# df = vectorize_column(df, 'genres')
+
+# df = pd.DataFrame.explode(df, column='genres')
+
+# df = df.groupby(['position_disc', 'genres'])\
+#         .agg({'dur_rel':['median', 'mean'], 'imdb_id':'nunique'}).droplevel(0, axis=1)\
+#         .reset_index()
+
+# # df.loc[:, 'roll'] = df.sort_values(by='position_disc')['median'].rolling(10, center=True).mean()
+# # df.loc[:, 'rank'] = df['median'].rank(ascending=False).astype(int)
+# aux = df.groupby(['genres'], as_index=False).agg({'nunique':'max'})
+# aux.loc[:, 'text'] = aux.apply(lambda x: f"<b>{x['genres']}</b> ({x['nunique']})", axis=1)
+# aux_dict = aux.set_index('genres')['text'].to_dict()
+                               
+# category_orders = {'genres':aux.sort_values(by='nunique', ascending=False)['genres'].tolist()}
+                            
+                                                               
+# fig = px.line(df, x='position_disc', y='mean', line_shape='linear', facet_col_spacing=0.05,
+#               facet_col='genres', color_discrete_sequence=main_palette, category_orders = category_orders,
+#               facet_col_wrap=5)
+# fig.update_xaxes(ticksuffix='%', dtick=50, range=[0, 101], color='grey', title='')
+# fig.update_xaxes(title='Position on movie', row=1, titlefont_color='black', col=3)
+
+# fig.update_yaxes(rangemode='tozero', showgrid=False, title='', dtick=1, color='grey')
+# fig.update_yaxes(ticksuffix='%')
+# # fig.update_yaxes(col=1, ticksuffix='%')
+
+# , title='Level of Silence', row=3
+# fig.for_each_annotation(lambda x: x.update(text=aux_dict[x.text.split('=')[1]]))
+# fig.update_layout(
+#     title='Which part of a movie is the quietest?',
+#     showlegend=False,
+#     height=800
+# )
+# plot(fig)
 
 
-fig = px.box(df, x='rating', y='dur_rel', hover_name='title', points=False)
-plot(fig)
+
+
+# + code_folding=[0]
+# # Scatter movie relationship year x rating x silence
+# df = silences_df\
+#         .groupby(['imdb_id', 'year', 'genres', 'rating', 'top_250_rank', 'title'], as_index=False)\
+#         .agg({'dur_rel':'sum'})
+
+# df = vectorize_column(df, 'genres')
+
+# fig = px.scatter(df, x='year', y='dur_rel', hover_name='title')
+# plot(fig)
+
+
+# fig = px.box(df, x='rating', y='dur_rel', hover_name='title', points=False)
+# plot(fig)
+
+
+# fig = px.box(df, x='rating', y='dur_rel', hover_name='title', points=False)
+# plot(fig)
+# +
+# Silence fup
+# Most silent movies
+# Black and White x Color
 # -
-# ## All Sounds
+
+# ## Dialogue
 
 # +
-df = movies_df.copy()
-fig = px.violin(df, x = ['silence_dur', 'dialogue_dur', 'other_dur'], y='variable', color='variable')
-fig.update_traces(orientation='h', side='positive', width=1, 
-                  points=False, spanmode='hard', meanline_visible=True)
-
-fig.update_xaxes(ticksuffix='%', title='Percentage of movie', dtick=100, range=[-1,101])
-fig.update_yaxes(showgrid=True)
-fig.update_layout(title='What composes the sound of movies?', showlegend=False)
-
-plot(fig)
+# Speach follow up
+# Overall time on dialogue
+# Dialogue per genre
 
 # + code_folding=[0]
 # Dialogue view
@@ -432,30 +567,6 @@ fig.update_layout(
     title = 'Which movies have the most dialogue?', 
     showlegend=False, 
     margin_t=120,
-    yaxis_title='')
-
-fig = facet_prettify(fig)
-plot(fig)
-
-# + code_folding=[0]
-# Sound composition
-df = movies_df.copy()
-
-df.loc[:, 'decade'] = (np.floor(df['year']/20)*20).astype(int)
-df.loc[:, 'decade'] = df['decade'].apply(lambda x: f"{x} - {x+19}")
-
-fig = px.strip(df.sort_values(by='decade'), y=['silence_dur', 'dialogue_dur', 'other_dur'],
-               facet_col='decade', color_discrete_sequence=main_palette, color='variable',
-               hover_name='title', hover_data=['year', 'top_250_rank'])
-
-fig.update_yaxes(dtick=50, range=[0,110], ticksuffix='%')
-fig.update_xaxes(title='', showticklabels=False)
-
-fig.update_layout(
-    title = 'By which type of sound each movie is composed?', 
-    showlegend=True, 
-    margin_t=120,
-    legend_title='Type of sound',
     yaxis_title='')
 
 fig = facet_prettify(fig)

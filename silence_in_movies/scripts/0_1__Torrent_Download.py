@@ -28,19 +28,22 @@ from tpblite import TPB, CATEGORIES, ORDERS
 from unidecode import unidecode
 
 data_path = Path('./data')
-# -
 
+# + [markdown] heading_collapsed=true
 # # Find magnet links
 
+# + hidden=true
 imdb_top_250_df = pd.read_csv(data_path/'imdb_top250_movies.csv').set_index('imdb_id')
 top_df = imdb_top_250_df.copy()
 # top_df = imdb_top_250_df.loc[imdb_top_250_df['top_250_rank'] <= 100]
 
+# + hidden=true
 movie_dict = top_df.loc[:, ['title', 'year']].to_dict(orient='index')
 
+# + hidden=true
 written_files = [f.split('.json')[0] for f in os.listdir(data_path/'torrent_files/')]
 
-# + [markdown] heading_collapsed=true
+# + [markdown] heading_collapsed=true hidden=true
 # ## Yify
 
 # + code_folding=[1] hidden=true
@@ -109,13 +112,14 @@ torrent_info_df.head(1)
 
 # + hidden=true
 torrent_info_df.to_csv(data_path/'yify_torrents.csv', index=False)
-# -
 
+# + [markdown] hidden=true
 # ## The Pirate Bay
 
+# + hidden=true
 tpb = TPB()
 
-# +
+# + hidden=true
 i = 0
 
 chosen_torrents = []
@@ -143,7 +147,7 @@ for movie_id, movie_infos in movie_dict.items():
     
     i += 1
 
-# +
+# + hidden=true
 tpb_df = pd.concat(options)
 tpb_df.columns = ['imdb_id', 'title', 'byte_size', 'seeds', 'magnet']
 
@@ -151,14 +155,15 @@ tpb_df.loc[:, 'has_no_seeds'] = tpb_df['seeds'] < 2
 tpb_df.loc[:, 'byte_neg'] = -tpb_df['byte_size']
 
 tpb_df = tpb_df\
-            .loc[tpb_df['byte_size']/(10**9) < 2]\
+            .loc[tpb_df['byte_size']/(10**9) < 3]\
             .sort_values(by=['seeds', 'byte_neg'], ascending=False)\
             .drop_duplicates(subset=['imdb_id'], keep='first')
 
 tpb_df.head()
-# -
 
+# + hidden=true
 tpb_df.to_csv(data_path/'the_pirate_bay_torrents.csv', index=False)
+# -
 
 # # Batch Torrents
 
@@ -178,8 +183,9 @@ yify_problem = pd.concat(array)['imdb_id'].unique().tolist()
 yify_df = yify_raw_df.loc[~yify_raw_df['imdb_id'].isin(yify_problem)]
 tpb_df = tpb_raw_df.loc[tpb_raw_df['imdb_id'].isin(yify_problem)]
 
-torrents_df = pd.concat([yify_df, tpb_df], axis=0).loc[:, ['magnet', 'imdb_id']]
+# torrents_df = pd.concat([yify_df, tpb_df], axis=0).loc[:, ['magnet', 'imdb_id']]
 torrents_df = tpb_raw_df
+# torrents_df = yify_df
 
 # Join information
 df = imdb_df.loc[:, ['imdb_id', 'batch', 'year', 'top_250_rank']]
@@ -228,10 +234,10 @@ len(do_not_download)
 
 # +
 not_downloaded_df = torrent_info_df\
-                        .loc[torrent_info_df['top_250_rank'] <= 100]\
+                        .loc[torrent_info_df['top_250_rank'] <= 150]\
                         .loc[~torrent_info_df['imdb_id'].isin(do_not_download)].sample(frac=1.0)
 
-not_downloaded_df.shape
+not_downloaded_df.head()
 
 # + code_folding=[]
 shutil.rmtree(str(batch_folder))

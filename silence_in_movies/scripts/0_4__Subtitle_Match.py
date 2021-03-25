@@ -83,10 +83,11 @@ movies_with_subtitle = [f for f in os.listdir(movies_prep_path) if not f.startsw
 # +
 all_subs = []
 for m in movies_with_subtitle:
+    print(m)
     folder_subtitle = movies_prep_path/f'{m}/subtitle/'
     file_subtitle = [f for f in os.listdir(folder_subtitle) if not f.startswith('.')][0]
     if 'srt' in file_subtitle:
-        subs = pysrt.open(f'{folder_subtitle/file_subtitle}')
+        subs = pysrt.open(f'{folder_subtitle/file_subtitle}', encoding='iso-8859-1')
 
         episode_subtitles = []
         for i in range(0, len(subs)):
@@ -114,5 +115,3 @@ all_subs_df = pd.concat(all_subs, axis=0).set_index('imdb_id')
 # -
 
 all_subs_df.to_csv(data_path/'prep/all_subtitles.csv')
-
-
