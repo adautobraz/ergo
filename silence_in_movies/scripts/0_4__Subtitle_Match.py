@@ -87,7 +87,10 @@ for m in movies_with_subtitle:
     folder_subtitle = movies_prep_path/f'{m}/subtitle/'
     file_subtitle = [f for f in os.listdir(folder_subtitle) if not f.startswith('.')][0]
     if 'srt' in file_subtitle:
-        subs = pysrt.open(f'{folder_subtitle/file_subtitle}', encoding='iso-8859-1')
+        try:
+            subs = pysrt.open(f'{folder_subtitle/file_subtitle}')
+        except:
+            subs = pysrt.open(f'{folder_subtitle/file_subtitle}', encoding='iso-8859-1')
 
         episode_subtitles = []
         for i in range(0, len(subs)):
@@ -111,7 +114,15 @@ for m in movies_with_subtitle:
         all_subs.append(episode_df)
 
             
-all_subs_df = pd.concat(all_subs, axis=0).set_index('imdb_id')
+all_subs_df = pd.concat(all_subs, axis=0)
 # -
 
-all_subs_df.to_csv(data_path/'prep/all_subtitles.csv')
+all_subs_df.loc[:, 'start'] = all_subs_df.apply(lambda x: x['start_h']*3600 + x['start_min']*60 +  x['start_s'] + x['start_ms']/1000, axis=1)
+all_subs_df.loc[:, 'end'] = all_subs_df.apply(lambda x: x['end_h']*3600 + x['end_min']*60 +  x['end_s'] + x['end_ms']/1000, axis=1)
+all_subs_df = all_subs_df.loc[:, ['imdb_id', 'text', 'start', 'end', 'position']]
+all_subs_df.loc[:, 'duration'] = all_subs_df['end'] - all_subs_df['start']
+all_subs_df.head()
+
+all_subs_df.to_csv(data_path/'prep/all_subtitles.csv', index=False)
+
+

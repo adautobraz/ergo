@@ -108,5 +108,3 @@ downloaded = [f for f in os.listdir(movies_prep_path) if not f.startswith('.')]
 top_df = imdb_df.loc[imdb_df['top_250_rank'] <= 150]\
             .loc[~imdb_df['imdb_id'].isin(downloaded)]
 top_df.head()
-
-
